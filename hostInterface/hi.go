@@ -55,14 +55,21 @@ func NewHostInterface(name string, gateway *net.IPNet, opts map[string]string) (
 }
 
 func GetHostInterface(name string) (*HostInterface, error) {
-	vxl, err := vxlan.GetVxlan(name)
+	hi, err := getHostInterface(name)
 	if err != nil {
 		log.WithError(err).Errorf("failed to get vxlan link by name %v", name)
+	}
+
+	return hi, err
+}
+
+func getHostInterface(name string) (*HostInterface, error) {
+	vxl, err := vxlan.GetVxlan(name)
+	if err != nil {
 		return nil, err
 	}
 	mvl, err := macvlan.GetMacvlan("hmvl_" + name)
 	if err != nil {
-		log.WithError(err).Errorf("failed to get macvlan link by name %v", "hmvl_"+name)
 		return nil, err
 	}
 
@@ -75,9 +82,22 @@ func GetHostInterface(name string) (*HostInterface, error) {
 	return hi, nil
 }
 
+func GetOrCreateHostInterface(name string, gateway *net.IPNet, opts map[string]string) (*HostInterface, error) {
+	hi, err := getHostInterface(name)
+	if err == nil {
+		return hi, nil
+	}
+
+	return NewHostInterface(name, gateway, opts)
+}
+
 func (hi *HostInterface) CreateMacvlan(name string) error {
 	_, err := hi.vxl.CreateMacvlan(name)
 	return err
+}
+
+func (hi *HostInterface) DeleteMacvlan(name string) error {
+	return hi.vxl.DeleteMacvlan(name)
 }
 
 func (hi *HostInterface) isEmpty() bool {

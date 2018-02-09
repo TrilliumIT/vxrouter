@@ -76,22 +76,16 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 		return nil, err
 	}
 
-	//get or create hostinterface
-	var hi *hostInterface.HostInterface
-	hi, err = hostInterface.GetHostInterface(nr.Name)
+	gw, err := gatewayFromIPAMConfigs(nr.IPAM.Config)
 	if err != nil {
-		//TODO: build options map
-		opts := nr.Options
-		gw, err := gatewayFromIPAMConfigs(nr.IPAM.Config)
-		if err != nil {
-			log.WithError(err).Errorf("failed to get gateway cidr from ipam config")
-			return nil, err
-		}
-		hi, err = hostInterface.NewHostInterface(nr.Name, gw, opts)
-		if err != nil {
-			log.WithError(err).Errorf("failed to create HostInterface")
-			return nil, err
-		}
+		log.WithError(err).Errorf("failed to get gateway cidr from ipam config")
+		return nil, err
+	}
+
+	hi, err := hostInterface.GetOrCreateHostInterface(nr.Name, gw, nr.Options)
+	if err != nil {
+		log.WithError(err).Errorf("failed to create HostInterface")
+		return nil, err
 	}
 
 	mvlName := "cmvl_" + r.EndpointID[:7]
@@ -113,6 +107,12 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 
 func (d *Driver) Leave(r *network.LeaveRequest) error {
 	log.WithField("r", r).Debugf("vxrNet.Leave()")
+
+	//TODO: get hi
+
+	//mvlName := "cmvl_" + r.EndpointID[:7]
+	//return hi.DeleteMacvlan(name)
+
 	return nil
 }
 

@@ -235,9 +235,10 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 }
 
 func GetVxlan(name string) (*Vxlan, error) {
+	log.Debugf("vxlan.GetVxlan(%v)", name)
+
 	link, err := netlink.LinkByName(name)
 	if err != nil {
-		log.WithError(err).Errorf("failed to get vxlan link by name %v", name)
 		return nil, err
 	}
 
@@ -250,6 +251,21 @@ func GetVxlan(name string) (*Vxlan, error) {
 
 func (v *Vxlan) CreateMacvlan(name string) (*macvlan.Macvlan, error) {
 	return macvlan.NewMacvlan(name, v.nl.LinkAttrs.Index)
+}
+
+func (v *Vxlan) DeleteMacvlan(name string) error {
+	//TODO: validate parent index
+
+	mvl, err := macvlan.GetMacvlan(name)
+	if err != nil {
+		return err
+	}
+
+	if v.nl.Index != mvl.GetParentIndex() {
+		return fmt.Errorf("tried to delete a macvlan for which I'm not the parent")
+	}
+
+	return mvl.Delete()
 }
 
 //host macvlan ind address are implicitely deleted when calling this

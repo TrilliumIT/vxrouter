@@ -62,3 +62,7 @@ func (m *Macvlan) Delete() error {
 	// delete the macvlan slave device
 	return netlink.LinkDel(m.nl)
 }
+
+func (m *Macvlan) GetParentIndex() int {
+	return m.nl.Attrs().ParentIndex
+}
