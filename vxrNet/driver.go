@@ -1,79 +1,164 @@
 package vxrNet
 
 import (
-	"github.com/docker/go-plugins-helpers/network"
+	"fmt"
+	"net"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/docker/docker/api/types"
+	apinet "github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/client"
+	"github.com/docker/go-plugins-helpers/network"
+	"golang.org/x/net/context"
+
+	"github.com/TrilliumIT/docker-vxrouter/hostInterface"
 )
 
-type vxrNet struct{}
-
-func (vi *vxrNet) GetCapabilities() (*network.CapabilitiesResponse, error) {
-	log.Debugf("vxrNet.GetCapabilites()")
-	return &network.CapabilitiesResponse{}, nil
+type Driver struct {
+	scope  string
+	client *client.Client
 }
 
-func (vi *vxrNet) CreateNetwork(r *network.CreateNetworkRequest) error {
-	log.Debugf("vxrNet.CreateNetwork()")
+func (d *Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
+	log.Debugf("vxrNet.GetCapabilites()")
+	cap := &network.CapabilitiesResponse{
+		Scope:             d.scope,
+		ConnectivityScope: "",
+	}
+	return cap, nil
+}
+
+func (d *Driver) CreateNetwork(r *network.CreateNetworkRequest) error {
+	log.WithField("r", r).Debugf("vxrNet.CreateNetwork()")
 	return nil
 }
 
-func (vi *vxrNet) AllocateNetwork(r *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
-	log.Debugf("vxrNet.AllocateNetwork()")
+func (d *Driver) AllocateNetwork(r *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
+	log.WithField("r", r).Debugf("vxrNet.AllocateNetwork()")
 	return &network.AllocateNetworkResponse{}, nil
 }
 
-func (vi *vxrNet) DeleteNetwork(r *network.DeleteNetworkRequest) error {
-	log.Debugf("vxrNet.DeleteNetwork()")
+func (d *Driver) DeleteNetwork(r *network.DeleteNetworkRequest) error {
+	log.WithField("r", r).Debugf("vxrNet.DeleteNetwork()")
 	return nil
 }
 
-func (vi *vxrNet) FreeNetwork(r *network.FreeNetworkRequest) error {
-	log.Debugf("vxrNet.FreeNetwork()")
+func (d *Driver) FreeNetwork(r *network.FreeNetworkRequest) error {
+	log.WithField("r", r).Debugf("vxrNet.FreeNetwork()")
 	return nil
 }
 
-func (vi *vxrNet) CreateEndpoint(r *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
-	log.Debugf("vxrNet.ReleaseAddress()")
+func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
+	log.WithField("r", r).Debugf("vxrNet.CreateEndpoint()")
 	return &network.CreateEndpointResponse{}, nil
 }
 
-func (vi *vxrNet) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
-	log.Debugf("vxrNet.DeleteEndpoint()")
+func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
+	log.WithField("r", r).Debugf("vxrNet.DeleteEndpoint()")
 	return nil
 }
 
-func (vi *vxrNet) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, error) {
-	log.Debugf("vxrNet.EndpointInfo()")
+func (d *Driver) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, error) {
+	log.WithField("r", r).Debugf("vxrNet.EndpointInfo()")
 	return &network.InfoResponse{}, nil
 }
 
-func (vi *vxrNet) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
-	log.Debugf("vxrNet.Join()")
-	return &network.JoinResponse{}, nil
+func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
+	log.WithField("r", r).Debugf("vxrNet.Join()")
+	nr, err := d.client.NetworkInspect(context.Background(), r.NetworkID, types.NetworkInspectOptions{})
+	if err != nil {
+		log.WithError(err).Errorf("failed to inspect network %v", r.NetworkID)
+		return nil, err
+	}
+
+	if nr.Driver != "vxrNet" {
+		err := fmt.Errorf("network %v is not a vxrNet", r.NetworkID)
+		return nil, err
+	}
+
+	//get or create hostinterface
+	var hi *hostInterface.HostInterface
+	hi, err = hostInterface.GetHostInterface(nr.Name)
+	if err != nil {
+		//TODO: build options map
+		opts := nr.Options
+		gw, err := gatewayFromIPAMConfigs(nr.IPAM.Config)
+		if err != nil {
+			log.WithError(err).Errorf("failed to get gateway cidr from ipam config")
+			return nil, err
+		}
+		hi, err = hostInterface.NewHostInterface(nr.Name, gw, opts)
+		if err != nil {
+			log.WithError(err).Errorf("failed to create HostInterface")
+			return nil, err
+		}
+	}
+
+	mvlName := "cmvl_" + r.EndpointID[:7]
+	err = hi.CreateMacvlan(mvlName)
+	if err != nil {
+		log.WithError(err).Errorf("failed to create macvlan for container")
+		return nil, err
+	}
+
+	jr := &network.JoinResponse{
+		InterfaceName: network.InterfaceName{
+			SrcName:   mvlName,
+			DstPrefix: "eth",
+		},
+	}
+
+	return jr, nil
 }
 
-func (vi *vxrNet) Leave(r *network.LeaveRequest) error {
-	log.Debugf("vxrNet.Leave()")
+func (d *Driver) Leave(r *network.LeaveRequest) error {
+	log.WithField("r", r).Debugf("vxrNet.Leave()")
 	return nil
 }
 
-func (vi *vxrNet) DiscoverNew(r *network.DiscoveryNotification) error {
-	log.Debugf("vxrNet.DiscoverNew()")
+func (d *Driver) DiscoverNew(r *network.DiscoveryNotification) error {
+	log.WithField("r", r).Debugf("vxrNet.DiscoverNew()")
 	return nil
 }
 
-func (vi *vxrNet) DiscoverDelete(r *network.DiscoveryNotification) error {
-	log.Debugf("vxrNet.DiscoverDelete()")
+func (d *Driver) DiscoverDelete(r *network.DiscoveryNotification) error {
+	log.WithField("r", r).Debugf("vxrNet.DiscoverDelete()")
 	return nil
 }
 
-func (vi *vxrNet) ProgramExternalConnectivity(r *network.ProgramExternalConnectivityRequest) error {
-	log.Debugf("vxrNet.ProgramExternalConnectivity()")
+func (d *Driver) ProgramExternalConnectivity(r *network.ProgramExternalConnectivityRequest) error {
+	log.WithField("r", r).Debugf("vxrNet.ProgramExternalConnectivity()")
 	return nil
 }
 
-func (vi *vxrNet) RevokeExternalConnectivity(r *network.RevokeExternalConnectivityRequest) error {
-	log.Debugf("vxrNet.RevokeExternalConnectivity()")
+func (d *Driver) RevokeExternalConnectivity(r *network.RevokeExternalConnectivityRequest) error {
+	log.WithField("r", r).Debugf("vxrNet.RevokeExternalConnectivity()")
 	return nil
+}
+
+func NewDriver(scope string, client *client.Client) (*Driver, error) {
+	d := &Driver{
+		scope,
+		client,
+	}
+	return d, nil
+}
+
+//loop over the IPAMConfig array, combine gw and sn into a cidr
+func gatewayFromIPAMConfigs(ics []apinet.IPAMConfig) (*net.IPNet, error) {
+	for _, ic := range ics {
+		gws := ic.Gateway
+		sns := ic.Subnet
+		if gws != "" && sns != "" {
+			gw := net.ParseIP(gws)
+			if gw == nil {
+				err := fmt.Errorf("failed to parse gateway from ipam config")
+				return nil, err
+			}
+			_, sn, err := net.ParseCIDR(sns)
+			return &net.IPNet{IP: gw, Mask: sn.Mask}, err
+		}
+	}
+
+	return nil, fmt.Errorf("no gateway with subnet found in ipam config")
 }
