@@ -5,7 +5,6 @@ import (
 	"net"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/docker/docker/api/types"
 	apinet "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/network"
@@ -65,7 +64,7 @@ func (d *Driver) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, er
 
 func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 	log.WithField("r", r).Debugf("vxrNet.Join()")
-	nr, err := d.client.NetworkInspect(context.Background(), r.NetworkID, types.NetworkInspectOptions{})
+	nr, err := d.client.NetworkInspect(context.Background(), r.NetworkID)
 	if err != nil {
 		log.WithError(err).Errorf("failed to inspect network %v", r.NetworkID)
 		return nil, err
