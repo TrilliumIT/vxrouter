@@ -152,7 +152,7 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 	// bring interfaces up
 	err = netlink.LinkSetUp(nl)
 	if err != nil {
-		log.Errorf("Error bringing up vxlan: %v", err)
+		log.WithError(err).Debug("failed to bring up vxlan")
 		return nil, err
 	}
 

@@ -3,6 +3,7 @@ package vxrNet
 import (
 	"fmt"
 	"net"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/types"
@@ -15,9 +16,11 @@ import (
 )
 
 type Driver struct {
-	scope  string
-	client *client.Client
-	log    *log.Entry
+	scope       string
+	client      *client.Client
+	log         *log.Entry
+	nrCache     map[string]*types.NetworkResource
+	nrCacheLock *sync.Mutex
 }
 
 func NewDriver(scope string, client *client.Client) (*Driver, error) {
@@ -25,6 +28,8 @@ func NewDriver(scope string, client *client.Client) (*Driver, error) {
 		scope,
 		client,
 		log.WithField("driver", "vxrNet"),
+		make(map[string]*types.NetworkResource),
+		&sync.Mutex{},
 	}
 	return d, nil
 }
@@ -104,23 +109,8 @@ func (d *Driver) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, er
 }
 
 func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
-	d.log.WithField("r", r).Debug("Join()")
-
-	nr, err := d.getNetworkResource(r.NetworkID)
+	hi, err := d.ConnectHost(r.NetworkID)
 	if err != nil {
-		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
-		return nil, err
-	}
-
-	gw, err := gatewayFromIPAMConfigs(nr.IPAM.Config)
-	if err != nil {
-		d.log.WithError(err).Error("failed to get gateway cidr from ipam config")
-		return nil, err
-	}
-
-	hi, err := hostInterface.GetOrCreateHostInterface(nr.Name, gw, nr.Options)
-	if err != nil {
-		d.log.WithError(err).Error("failed to create HostInterface")
 		return nil, err
 	}
 
@@ -139,6 +129,25 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 	}
 
 	return jr, nil
+}
+
+func (d *Driver) ConnectHost(id string) (*hostInterface.HostInterface, error) {
+	log := d.log.WithField("id", id)
+	log.Debug("ConnectHost()")
+
+	nr, err := d.getNetworkResource(id)
+	if err != nil {
+		log.WithError(err).Error("failed to get network resource")
+		return nil, err
+	}
+
+	gw, err := gatewayFromIPAMConfigs(nr.IPAM.Config)
+	if err != nil {
+		d.log.WithError(err).Error("failed to get gateway cidr from ipam config")
+		return nil, err
+	}
+
+	return hostInterface.GetOrCreateHostInterface(nr.Name, gw, nr.Options)
 }
 
 func (d *Driver) Leave(r *network.LeaveRequest) error {
@@ -186,6 +195,13 @@ func gatewayFromIPAMConfigs(ics []apinet.IPAMConfig) (*net.IPNet, error) {
 }
 
 func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
+	d.nrCacheLock.Lock()
+	defer d.nrCacheLock.Unlock()
+	var err error
+	if nr, ok := d.nrCache[id]; ok {
+		return nr, nil
+	}
+
 	nr, err := d.client.NetworkInspect(context.Background(), id)
 	if err != nil {
 		d.log.WithError(err).Error("failed to inspect network %v", id)
@@ -197,5 +213,55 @@ func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
 		return nil, err
 	}
 
+	d.nrCache[id] = &nr
+
 	return &nr, nil
+}
+
+func (d *Driver) getNetworkResourceBySubnetFromCache(subnet string) *types.NetworkResource {
+	d.nrCacheLock.Lock()
+	defer d.nrCacheLock.Unlock()
+	for _, nr := range d.nrCache {
+		for _, ipc := range nr.IPAM.Config {
+			log.WithField("subnet", ipc.Subnet).WithField("to", subnet).Debug("Checking for pool")
+			if ipc.Subnet == subnet {
+				log.Debug("Returnig subnet")
+				return nr
+			}
+		}
+	}
+	return nil
+}
+
+func (d *Driver) cacheAllNetworkResources() error {
+	nets, err := d.client.NetworkList(context.Background(), types.NetworkListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, nr := range nets {
+		if nr.Driver == "vxrNet" {
+			d.getNetworkResource(nr.ID)
+		}
+	}
+	return nil
+}
+
+func (d *Driver) GetNetworkResourceBySubnet(subnet string) (*types.NetworkResource, error) {
+	nr := d.getNetworkResourceBySubnetFromCache(subnet)
+	if nr != nil {
+		return nr, nil
+	}
+	err := d.cacheAllNetworkResources()
+	if err != nil {
+		return nil, err
+	}
+	return d.getNetworkResourceBySubnetFromCache(subnet), nil
+}
+
+func (d *Driver) GetGatewayBySubnet(subnet string) (*net.IPNet, error) {
+	nr, err := d.GetNetworkResourceBySubnet(subnet)
+	if err != nil {
+		return nil, err
+	}
+	return gatewayFromIPAMConfigs(nr.IPAM.Config)
 }

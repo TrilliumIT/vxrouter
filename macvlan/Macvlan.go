@@ -29,6 +29,12 @@ func NewMacvlan(name string, parent int) (*Macvlan, error) {
 		return nil, err
 	}
 
+	if err := netlink.LinkSetUp(nl); err != nil {
+		log.WithError(err).Debug("failed to bring up macvlan")
+		return nil, err
+	}
+	log.Debug("Brought up macvlan")
+
 	return &Macvlan{nl, log}, nil
 }
 

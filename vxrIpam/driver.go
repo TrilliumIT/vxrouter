@@ -1,9 +1,11 @@
 package vxrIpam
 
 import (
+	"fmt"
 	"net"
 	"time"
 
+	"github.com/TrilliumIT/docker-vxrouter/vxrNet"
 	"github.com/TrilliumIT/iputil"
 	"github.com/docker/go-plugins-helpers/ipam"
 	"github.com/vishvananda/netlink"
@@ -12,6 +14,7 @@ import (
 )
 
 type Driver struct {
+	vxrNet       *vxrNet.Driver
 	propTime     time.Duration
 	respTime     time.Duration
 	excludeFirst int
@@ -19,8 +22,9 @@ type Driver struct {
 	log          *log.Entry
 }
 
-func NewDriver(propTime, respTime time.Duration, excludeFirst, excludeLast int) (*Driver, error) {
+func NewDriver(vxrNet *vxrNet.Driver, propTime, respTime time.Duration, excludeFirst, excludeLast int) (*Driver, error) {
 	d := &Driver{
+		vxrNet,
 		propTime,
 		respTime,
 		excludeFirst,
@@ -84,9 +88,28 @@ func (d *Driver) RequestAddress(r *ipam.RequestAddressRequest) (*ipam.RequestAdd
 			return nil, err
 		}
 	}
+
+	nr, err := d.vxrNet.GetNetworkResourceBySubnet(r.PoolID)
+	if nr == nil {
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to get network from pool")
+	}
+
+	_, err = d.vxrNet.ConnectHost(nr.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	gw, err := d.vxrNet.GetGatewayBySubnet(r.PoolID)
+	if err != nil {
+		return nil, err
+	}
+
 	err = netlink.RouteAdd(&netlink.Route{
 		Dst: addr,
-		Gw:  net.ParseIP("127.0.0.1"),
+		Gw:  gw.IP,
 	})
 	if err != nil {
 		d.log.WithError(err).Error("failed to add route")

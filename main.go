@@ -101,7 +101,7 @@ func Run(ctx *cli.Context) {
 	if err != nil {
 		log.WithError(err).Fatal("failed to create vxrNet driver")
 	}
-	id, err := vxrIpam.NewDriver(pt, rt, xf, xl)
+	id, err := vxrIpam.NewDriver(nd, pt, rt, xf, xl)
 	if err != nil {
 		log.WithError(err).Fatal("failed to create vxrIpam driver")
 	}
