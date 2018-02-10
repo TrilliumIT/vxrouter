@@ -185,7 +185,7 @@ func (v *Vxlan) CreateMacvlan(name string) (*macvlan.Macvlan, error) {
 func (v *Vxlan) DeleteMacvlan(name string) error {
 	v.log.Debug("DeleteMacvlan")
 
-	mvl, err := macvlan.GetMacvlan(name)
+	mvl, err := macvlan.FromName(name)
 	if err != nil {
 		return err
 	}
@@ -201,4 +201,42 @@ func (v *Vxlan) DeleteMacvlan(name string) error {
 func (v *Vxlan) Delete() error {
 	v.log.Debug("Delete")
 	return netlink.LinkDel(v.nl)
+}
+
+func (v *Vxlan) GetMacVlans() ([]*macvlan.Macvlan, error) {
+	v.log.Debug("GetMacVlans")
+	r := []*macvlan.Macvlan{}
+
+	allSlaves, err := v.GetSlaveDevices()
+	if err != nil {
+		return r, err
+	}
+
+	for _, link := range allSlaves {
+		mvl, err := macvlan.FromLink(link)
+		if err != nil {
+			continue
+		}
+		r = append(r, mvl)
+	}
+	return r, nil
+}
+
+func (v *Vxlan) GetSlaveDevices() ([]netlink.Link, error) {
+	v.log.Debug("GetSlaveDevices")
+	r := []netlink.Link{}
+
+	allLinks, err := netlink.LinkList()
+	if err != nil {
+		log.WithError(err).Debug("failed to get all links")
+		return r, err
+	}
+
+	for _, link := range allLinks {
+		if link.Attrs().MasterIndex != v.nl.Attrs().Index {
+			continue
+		}
+		r = append(r, link)
+	}
+	return r, nil
 }

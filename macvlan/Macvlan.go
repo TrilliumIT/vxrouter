@@ -32,21 +32,44 @@ func NewMacvlan(name string, parent int) (*Macvlan, error) {
 	return &Macvlan{nl, log}, nil
 }
 
-func GetMacvlan(name string) (*Macvlan, error) {
+func FromName(name string) (*Macvlan, error) {
 	log := log.WithField("Macvlan", name)
-	log.Debug("NewMacvlan")
+	log.Debug("FromName")
 	link, err := netlink.LinkByName(name)
 	if err != nil {
 		log.WithError(err).Debug("failed to get link by name")
 		return nil, err
 	}
 
+	return FromLink(link)
+}
+
+func FromIndex(index int) (*Macvlan, error) {
+	log := log.WithField("Macvlan", index)
+	log.Debug("FromIndex")
+	link, err := netlink.LinkByIndex(index)
+	if err != nil {
+		log.WithError(err).Debug("failed to get link by index")
+		return nil, err
+	}
+
+	return FromLink(link)
+}
+
+func FromLink(link netlink.Link) (*Macvlan, error) {
+	log := log.WithField("Macvlan", link.Attrs().Name)
+	log.Debug("FromLink")
 	if nl, ok := link.(*netlink.Macvlan); ok {
 		return &Macvlan{nl, log}, nil
 	}
 
-	log.Debug("link is not a macvlan")
-	return nil, fmt.Errorf("link is not a macvlan")
+	err := fmt.Errorf("link is not a macvlan")
+	log.WithError(err).Debug()
+	return nil, err
+}
+
+func (m *Macvlan) Equals(m2 *Macvlan) bool {
+	return m.nl.Attrs().Index == m2.nl.Attrs().Index
 }
 
 func (m *Macvlan) AddAddress(addr *net.IPNet) error {

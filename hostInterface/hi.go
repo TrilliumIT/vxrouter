@@ -1,6 +1,7 @@
 package hostInterface
 
 import (
+	"fmt"
 	"net"
 
 	log "github.com/Sirupsen/logrus"
@@ -82,7 +83,7 @@ func getHostInterface(name string) (*HostInterface, error) {
 		return hi, err
 	}
 
-	hi.mvl, err = macvlan.GetMacvlan("hmvl_" + name)
+	hi.mvl, err = macvlan.FromName("hmvl_" + name)
 	if err != nil {
 		log.Debug("failed to get macvlan interface")
 	}
@@ -103,5 +104,19 @@ func (hi *HostInterface) DeleteMacvlan(name string) error {
 
 func (hi *HostInterface) Delete() error {
 	hi.log.Debug("Delete")
+
+	slaves, err := hi.vxl.GetSlaveDevices()
+	if err != nil {
+		hi.log.WithError(err).Debug("failed to get slaves from vxlan")
+		return err
+	}
+
+	for _, slave := range slaves {
+		if mvl, err := macvlan.FromLink(slave); err == nil && mvl.Equals(hi.mvl) {
+			continue
+		}
+		err = fmt.Errorf("other slave devices still exist on this vxlan")
+	}
+
 	return hi.vxl.Delete()
 }
