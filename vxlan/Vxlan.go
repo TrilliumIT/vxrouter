@@ -173,6 +173,7 @@ func GetVxlan(name string) (*Vxlan, error) {
 		return &Vxlan{nl, log}, nil
 	}
 
+	log.Debug("link is not a vxlan")
 	return nil, fmt.Errorf("link is not a vxlan")
 }
 

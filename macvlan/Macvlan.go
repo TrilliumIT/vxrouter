@@ -9,11 +9,13 @@ import (
 )
 
 type Macvlan struct {
-	nl *netlink.Macvlan
+	nl  *netlink.Macvlan
+	log *log.Entry
 }
 
 func NewMacvlan(name string, parent int) (*Macvlan, error) {
-	log.Debugf("Creating new macvlan: %v", name)
+	log := log.WithField("Macvlan", name)
+	log.Debug("NewMacvlan")
 	// Create a macvlan link
 	nl := &netlink.Macvlan{
 		LinkAttrs: netlink.LinkAttrs{
@@ -23,39 +25,42 @@ func NewMacvlan(name string, parent int) (*Macvlan, error) {
 		Mode: netlink.MACVLAN_MODE_BRIDGE,
 	}
 	if err := netlink.LinkAdd(nl); err != nil {
-		log.WithError(err).Errorf("Error adding link: %v", err)
+		log.WithError(err).Debug("error adding link")
 		return nil, err
 	}
 
-	return &Macvlan{nl}, nil
+	return &Macvlan{nl, log}, nil
 }
 
 func GetMacvlan(name string) (*Macvlan, error) {
+	log := log.WithField("Macvlan", name)
+	log.Debug("NewMacvlan")
 	link, err := netlink.LinkByName(name)
 	if err != nil {
-		log.WithError(err).Errorf("failed to get macvlan link by name %v", name)
+		log.WithError(err).Debug("failed to get link by name")
 		return nil, err
 	}
 
 	if nl, ok := link.(*netlink.Macvlan); ok {
-		return &Macvlan{nl}, nil
+		return &Macvlan{nl, log}, nil
 	}
 
-	return nil, fmt.Errorf("link %v was not a macvlan", name)
+	log.Debug("link is not a macvlan")
+	return nil, fmt.Errorf("link is not a macvlan")
 }
 
 func (m *Macvlan) AddAddress(addr *net.IPNet) error {
+	m.log.Debug("AddAddress")
 	return netlink.AddrAdd(m.nl, &netlink.Addr{IPNet: addr})
 }
 
 func (m *Macvlan) Delete() error {
-	name := m.nl.LinkAttrs.Name
-	log.Debugf("deleting macvlan: %s", name)
+	m.log.Debug("Delete")
 
 	// verify a parent interface isn't being deleted
 	if m.nl.Attrs().ParentIndex == 0 {
-		err := fmt.Errorf("interface (%v) does not appear to be a slave interface", name)
-		log.WithError(err).Error()
+		err := fmt.Errorf("interface is not a slave")
+		m.log.WithError(err).Error()
 		return err
 	}
 
@@ -64,5 +69,6 @@ func (m *Macvlan) Delete() error {
 }
 
 func (m *Macvlan) GetParentIndex() int {
+	m.log.Debug("GetParentIndex")
 	return m.nl.Attrs().ParentIndex
 }
