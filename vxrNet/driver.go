@@ -74,7 +74,26 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 	hi, err := hostInterface.GetHostInterface(nr.Name)
 
 	mvlName := "cmvl_" + r.EndpointID[:7]
-	return hi.DeleteMacvlan(mvlName)
+	err = hi.DeleteMacvlan(mvlName)
+	if err != nil {
+		d.log.WithError(err).Error("failed to delete macvlan for container")
+		return err
+	}
+
+	containers, err := d.client.ContainerList(context.Background(), types.ContainerListOptions{})
+	if err != nil {
+		d.log.WithError(err).Error("failed to list containers")
+		return err
+	}
+
+	for _, c := range containers {
+		if _, ok := c.NetworkSettings.Networks[nr.Name]; ok {
+			d.log.Debug("containers are still running on this network")
+			return nil
+		}
+	}
+
+	return hi.Delete()
 }
 
 func (d *Driver) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, error) {
