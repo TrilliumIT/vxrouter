@@ -87,9 +87,11 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 	}
 
 	for _, c := range containers {
-		if _, ok := c.NetworkSettings.Networks[nr.Name]; ok {
-			d.log.Debug("containers are still running on this network")
-			return nil
+		if ns, ok := c.NetworkSettings.Networks[nr.Name]; ok {
+			if ns.EndpointID != r.EndpointID {
+				d.log.Debug("other containers are still running on this network")
+				return nil
+			}
 		}
 	}
 
