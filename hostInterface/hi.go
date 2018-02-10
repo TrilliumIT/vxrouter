@@ -34,7 +34,7 @@ func GetOrCreateHostInterface(name string, gateway *net.IPNet, opts map[string]s
 	if hi.mvl == nil {
 		hi.mvl, err = hi.vxl.CreateMacvlan("hmvl_" + name)
 		if err != nil {
-			err2 := hi.vxl.Delete()
+			err2 := hi.Delete()
 			if err2 != nil {
 				log.WithError(err).WithError(err2).Debug("failed to delete vxlan")
 				return nil, err2
@@ -47,7 +47,7 @@ func GetOrCreateHostInterface(name string, gateway *net.IPNet, opts map[string]s
 	if err != nil {
 		log.WithError(err).Debug("failed to add address to macvlan")
 		//implicitly deletes macvlan
-		err2 := hi.vxl.Delete()
+		err2 := hi.Delete()
 		if err2 != nil {
 			log.WithError(err).WithError(err2).Debug("failed to delete vxlan")
 			return nil, err2
@@ -101,6 +101,7 @@ func (hi *HostInterface) DeleteMacvlan(name string) error {
 	return hi.vxl.DeleteMacvlan(name)
 }
 
-func (hi *HostInterface) isEmpty() bool {
-	return true
+func (hi *HostInterface) Delete() error {
+	hi.log.Debug("Delete")
+	return hi.vxl.Delete()
 }
