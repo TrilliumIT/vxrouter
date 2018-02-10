@@ -62,14 +62,15 @@
   version = "v0.3.0"
 
 [[projects]]
-  branch = "master"
+  branch = "shutdown"
   name = "github.com/docker/go-plugins-helpers"
   packages = [
     "ipam",
     "network",
     "sdk"
   ]
-  revision = "61cb8e2334204460162c8bd2417cd43cb71da66f"
+  revision = "fdd3f141fbd7e2494485d96f3dd25b9fe61d7140"
+  source = "https://github.com/clinta/go-plugins-helpers.git"
 
 [[projects]]
   name = "github.com/docker/go-units"
@@ -132,6 +133,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9aa05f5c7279e0c9b4c82af6d0a6cc51662d268067b0b690aca465182170d8ca"
+  inputs-digest = "3f815b0d48860d3f079cc832083e9647ea159c328872e4d0a2360d0552ff3147"
   solver-name = "gps-cdcl"
   solver-version = 1

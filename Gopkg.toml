@@ -34,8 +34,9 @@
   version = "=17.03.2-ce"
 
 [[constraint]]
-  branch = "master"
   name = "github.com/docker/go-plugins-helpers"
+  branch = "shutdown"
+  source = "https://github.com/clinta/go-plugins-helpers.git"
 
 [[constraint]]
   name = "github.com/urfave/cli"
