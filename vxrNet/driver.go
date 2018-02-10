@@ -17,10 +17,20 @@ import (
 type Driver struct {
 	scope  string
 	client *client.Client
+	log    *log.Entry
+}
+
+func NewDriver(scope string, client *client.Client) (*Driver, error) {
+	d := &Driver{
+		scope,
+		client,
+		log.WithField("driver", "vxrNet"),
+	}
+	return d, nil
 }
 
 func (d *Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
-	log.Debugf("vxrNet.GetCapabilites()")
+	d.log.Debug("GetCapabilities()")
 	cap := &network.CapabilitiesResponse{
 		Scope:             d.scope,
 		ConnectivityScope: "",
@@ -29,35 +39,35 @@ func (d *Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
 }
 
 func (d *Driver) CreateNetwork(r *network.CreateNetworkRequest) error {
-	log.WithField("r", r).Debugf("vxrNet.CreateNetwork()")
+	d.log.WithField("r", r).Debug("CreateNetwork()")
 	return nil
 }
 
 func (d *Driver) AllocateNetwork(r *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
-	log.WithField("r", r).Debugf("vxrNet.AllocateNetwork()")
+	d.log.WithField("r", r).Debug("AllocateNetwork()")
 	return &network.AllocateNetworkResponse{}, nil
 }
 
 func (d *Driver) DeleteNetwork(r *network.DeleteNetworkRequest) error {
-	log.WithField("r", r).Debugf("vxrNet.DeleteNetwork()")
+	d.log.WithField("r", r).Debug("DeleteNetwork()")
 	return nil
 }
 
 func (d *Driver) FreeNetwork(r *network.FreeNetworkRequest) error {
-	log.WithField("r", r).Debugf("vxrNet.FreeNetwork()")
+	d.log.WithField("r", r).Debug("FreeNetwork()")
 	return nil
 }
 
 func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
-	log.WithField("r", r).Debugf("vxrNet.CreateEndpoint()")
+	d.log.WithField("r", r).Debug("CreateEndpoint()")
 	return &network.CreateEndpointResponse{}, nil
 }
 
 func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
-	log.WithField("r", r).Debugf("vxrNet.DeleteEndpoint()")
+	d.log.WithField("r", r).Debug("DeleteEndpoint()")
 	nr, err := d.getNetworkResource(r.NetworkID)
 	if err != nil {
-		log.WithError(err).Errorf("failed to get network resource %v", r.NetworkID)
+		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
 		return err
 	}
 
@@ -68,35 +78,35 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 }
 
 func (d *Driver) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, error) {
-	log.WithField("r", r).Debugf("vxrNet.EndpointInfo()")
+	d.log.WithField("r", r).Debug("EndpointInfo()")
 	return &network.InfoResponse{}, nil
 }
 
 func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
-	log.WithField("r", r).Debugf("vxrNet.Join()")
+	d.log.WithField("r", r).Debug("Join()")
 
 	nr, err := d.getNetworkResource(r.NetworkID)
 	if err != nil {
-		log.WithError(err).Errorf("failed to get network resource %v", r.NetworkID)
+		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
 		return nil, err
 	}
 
 	gw, err := gatewayFromIPAMConfigs(nr.IPAM.Config)
 	if err != nil {
-		log.WithError(err).Errorf("failed to get gateway cidr from ipam config")
+		d.log.WithError(err).Error("failed to get gateway cidr from ipam config")
 		return nil, err
 	}
 
 	hi, err := hostInterface.GetOrCreateHostInterface(nr.Name, gw, nr.Options)
 	if err != nil {
-		log.WithError(err).Errorf("failed to create HostInterface")
+		d.log.WithError(err).Error("failed to create HostInterface")
 		return nil, err
 	}
 
 	mvlName := "cmvl_" + r.EndpointID[:7]
 	err = hi.CreateMacvlan(mvlName)
 	if err != nil {
-		log.WithError(err).Errorf("failed to create macvlan for container")
+		d.log.WithError(err).Error("failed to create macvlan for container")
 		return nil, err
 	}
 
@@ -111,36 +121,28 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 }
 
 func (d *Driver) Leave(r *network.LeaveRequest) error {
-	log.WithField("r", r).Debugf("vxrNet.Leave()")
+	d.log.WithField("r", r).Debug("Leave()")
 	return nil
 }
 
 func (d *Driver) DiscoverNew(r *network.DiscoveryNotification) error {
-	log.WithField("r", r).Debugf("vxrNet.DiscoverNew()")
+	d.log.WithField("r", r).Debug("DiscoverNew()")
 	return nil
 }
 
 func (d *Driver) DiscoverDelete(r *network.DiscoveryNotification) error {
-	log.WithField("r", r).Debugf("vxrNet.DiscoverDelete()")
+	d.log.WithField("r", r).Debug("DiscoverDelete()")
 	return nil
 }
 
 func (d *Driver) ProgramExternalConnectivity(r *network.ProgramExternalConnectivityRequest) error {
-	log.WithField("r", r).Debugf("vxrNet.ProgramExternalConnectivity()")
+	d.log.WithField("r", r).Debug("ProgramExternalConnectivity()")
 	return nil
 }
 
 func (d *Driver) RevokeExternalConnectivity(r *network.RevokeExternalConnectivityRequest) error {
-	log.WithField("r", r).Debugf("vxrNet.RevokeExternalConnectivity()")
+	d.log.WithField("r", r).Debug("RevokeExternalConnectivity()")
 	return nil
-}
-
-func NewDriver(scope string, client *client.Client) (*Driver, error) {
-	d := &Driver{
-		scope,
-		client,
-	}
-	return d, nil
 }
 
 //loop over the IPAMConfig array, combine gw and sn into a cidr
@@ -165,7 +167,7 @@ func gatewayFromIPAMConfigs(ics []apinet.IPAMConfig) (*net.IPNet, error) {
 func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
 	nr, err := d.client.NetworkInspect(context.Background(), id)
 	if err != nil {
-		log.WithError(err).Errorf("failed to inspect network %v", id)
+		d.log.WithError(err).Error("failed to inspect network %v", id)
 		return nil, err
 	}
 
