@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -100,8 +102,10 @@ func Run(ctx *cli.Context) {
 	ncerr := make(chan error)
 	icerr := make(chan error)
 
-	go func() { ncerr <- network.NewHandler(nd).ServeUnix("vxrNet", 0) }()
-	go func() { icerr <- ipam.NewHandler(id).ServeUnix("vxrIpam", 0) }()
+	nh := network.NewHandler(nd)
+	ih := ipam.NewHandler(id)
+	go func() { ncerr <- nh.ServeUnix("vxrNet", 0) }()
+	go func() { icerr <- ih.ServeUnix("vxrIpam", 0) }()
 
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -109,22 +113,30 @@ func Run(ctx *cli.Context) {
 	select {
 	case err := <-ncerr:
 		log.WithError(err).Error("error from vxrNet driver")
+		close(ncerr)
 	case err := <-icerr:
 		log.WithError(err).Error("error from vxrIpam driver")
+		close(icerr)
 	case <-c:
-		//have to manually clean up sock files because
-		//go-plugins-helpers doesn't give us a shutdown
-		//method, and running the handlers in a go routine
-		//prevents the defers from running
-		//also: see note about hardcoded path in `const` block
-		err := os.Remove(sockdir + "vxrNet.sock")
-		if err != nil {
-			log.WithError(err).Errorf("failed to delete socket file: %v", sockdir+"vxrNet.sock")
-		}
-		err = os.Remove(sockdir + "vxrIpam.sock")
-		if err != nil {
-			log.WithError(err).Errorf("failed to delete socket file: %v", sockdir+"vxrIpam.sock")
-		}
+	}
+
+	err = ih.Shutdown(context.Background())
+	if err != nil {
+		log.WithError(err).Error("Error shutting down vxrIpam driver")
+	}
+	err = nh.Shutdown(context.Background())
+	if err != nil {
+		log.WithError(err).Error("Error shutting down vxrNet driver")
+	}
+
+	err = <-icerr
+	if err != nil && err != http.ErrServerClosed {
+		log.WithError(err).Error("error from vxrIpam driver")
+	}
+
+	err = <-ncerr
+	if err != nil && err != http.ErrServerClosed {
+		log.WithError(err).Error("error from vxrNet driver")
 	}
 
 	fmt.Println()

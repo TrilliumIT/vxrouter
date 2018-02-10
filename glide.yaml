@@ -1,8 +1,0 @@
-package: github.com/TrilliumIT/docker-vxrouter
-import:
-- package: github.com/Sirupsen/logrus
-- package: github.com/docker/go-plugins-helpers
-  subpackages:
-  - ipam
-  - network
-- package: github.com/urfave/cli
