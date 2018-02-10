@@ -5,6 +5,7 @@ import (
 	"net"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/docker/docker/api/types"
 	apinet "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/network"
@@ -54,7 +55,16 @@ func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.Crea
 
 func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 	log.WithField("r", r).Debugf("vxrNet.DeleteEndpoint()")
-	return nil
+	nr, err := d.getNetworkResource(r.NetworkID)
+	if err != nil {
+		log.WithError(err).Errorf("failed to get network resource %v", r.NetworkID)
+		return err
+	}
+
+	hi, err := hostInterface.GetHostInterface(nr.Name)
+
+	mvlName := "cmvl_" + r.EndpointID[:7]
+	return hi.DeleteMacvlan(mvlName)
 }
 
 func (d *Driver) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, error) {
@@ -64,14 +74,10 @@ func (d *Driver) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, er
 
 func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 	log.WithField("r", r).Debugf("vxrNet.Join()")
-	nr, err := d.client.NetworkInspect(context.Background(), r.NetworkID)
-	if err != nil {
-		log.WithError(err).Errorf("failed to inspect network %v", r.NetworkID)
-		return nil, err
-	}
 
-	if nr.Driver != "vxrNet" {
-		err := fmt.Errorf("network %v is not a vxrNet", r.NetworkID)
+	nr, err := d.getNetworkResource(r.NetworkID)
+	if err != nil {
+		log.WithError(err).Errorf("failed to get network resource %v", r.NetworkID)
 		return nil, err
 	}
 
@@ -106,12 +112,6 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 
 func (d *Driver) Leave(r *network.LeaveRequest) error {
 	log.WithField("r", r).Debugf("vxrNet.Leave()")
-
-	//TODO: get hi
-
-	//mvlName := "cmvl_" + r.EndpointID[:7]
-	//return hi.DeleteMacvlan(name)
-
 	return nil
 }
 
@@ -160,4 +160,19 @@ func gatewayFromIPAMConfigs(ics []apinet.IPAMConfig) (*net.IPNet, error) {
 	}
 
 	return nil, fmt.Errorf("no gateway with subnet found in ipam config")
+}
+
+func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
+	nr, err := d.client.NetworkInspect(context.Background(), id)
+	if err != nil {
+		log.WithError(err).Errorf("failed to inspect network %v", id)
+		return nil, err
+	}
+
+	if nr.Driver != "vxrNet" {
+		err := fmt.Errorf("network %v is not a vxrNet", id)
+		return nil, err
+	}
+
+	return &nr, nil
 }
