@@ -1,9 +1,12 @@
 package vxrIpam
 
 import (
+	"net"
 	"time"
 
+	"github.com/TrilliumIT/iputil"
 	"github.com/docker/go-plugins-helpers/ipam"
+	"github.com/vishvananda/netlink"
 
 	log "github.com/Sirupsen/logrus"
 )
@@ -39,7 +42,10 @@ func (d *Driver) GetDefaultAddressSpaces() (*ipam.AddressSpacesResponse, error) 
 
 func (d *Driver) RequestPool(r *ipam.RequestPoolRequest) (*ipam.RequestPoolResponse, error) {
 	d.log.WithField("r", r).Debug("RequestPool()")
-	return &ipam.RequestPoolResponse{}, nil
+	return &ipam.RequestPoolResponse{
+		PoolID: r.Pool,
+		Pool:   r.Pool,
+	}, nil
 }
 
 func (d *Driver) ReleasePool(r *ipam.ReleasePoolRequest) error {
@@ -49,7 +55,49 @@ func (d *Driver) ReleasePool(r *ipam.ReleasePoolRequest) error {
 
 func (d *Driver) RequestAddress(r *ipam.RequestAddressRequest) (*ipam.RequestAddressResponse, error) {
 	d.log.WithField("r", r).Debug("RequestAddress()")
-	return &ipam.RequestAddressResponse{}, nil
+	_, subnet, err := net.ParseCIDR(r.PoolID)
+	if err != nil {
+		d.log.WithError(err).Error("Error parsing pool id subnet")
+	}
+
+	addr := &net.IPNet{
+		IP:   net.ParseIP(r.Address),
+		Mask: subnet.Mask,
+	}
+
+	if r.Options["RequestAddressType"] == "com.docker.network.gateway" {
+		return &ipam.RequestAddressResponse{
+			Address: addr.String(),
+		}, nil
+	}
+
+	_, ml := addr.Mask.Size()
+	addr.Mask = net.CIDRMask(ml, ml)
+	routes := []netlink.Route{{}}
+	for len(routes) > 0 {
+		if addr.IP == nil {
+			addr.IP = iputil.RandAddr(subnet)
+		}
+		routes, err = netlink.RouteListFiltered(0, &netlink.Route{Dst: addr}, netlink.RT_FILTER_DST)
+		if err != nil {
+			d.log.WithError(err).Error("failed to get routes")
+			return nil, err
+		}
+	}
+	err = netlink.RouteAdd(&netlink.Route{
+		Dst: addr,
+		Gw:  net.ParseIP("127.0.0.1"),
+	})
+	if err != nil {
+		d.log.WithError(err).Error("failed to add route")
+		return nil, err
+	}
+
+	addr.Mask = subnet.Mask
+
+	return &ipam.RequestAddressResponse{
+		Address: addr.String(),
+	}, nil
 }
 
 func (d *Driver) ReleaseAddress(r *ipam.ReleaseAddressRequest) error {
