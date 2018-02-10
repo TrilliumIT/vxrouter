@@ -91,6 +91,28 @@ func (m *Macvlan) Delete() error {
 	return netlink.LinkDel(m.nl)
 }
 
+func (m *Macvlan) GetAddresses() ([]*net.IPNet, error) {
+	addrs, err := netlink.AddrList(m.nl, 0)
+	if err != nil {
+		return nil, err
+	}
+	r := []*net.IPNet{}
+	for _, a := range addrs {
+		r = append(r, a.IPNet)
+	}
+	return r, nil
+}
+
+func (m *Macvlan) HasAddress(addr *net.IPNet) bool {
+	addrs, _ := m.GetAddresses()
+	for _, a := range addrs {
+		if a.IP.Equal(addr.IP) && a.Mask.String() == addr.Mask.String() {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *Macvlan) GetParentIndex() int {
 	m.log.Debug("GetParentIndex")
 	return m.nl.Attrs().ParentIndex

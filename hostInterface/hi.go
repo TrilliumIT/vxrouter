@@ -44,6 +44,10 @@ func GetOrCreateHostInterface(name string, gateway *net.IPNet, opts map[string]s
 		}
 	}
 
+	if hi.mvl.HasAddress(gateway) {
+		return hi, nil
+	}
+
 	err = hi.mvl.AddAddress(gateway)
 	if err != nil {
 		log.WithError(err).Debug("failed to add address to macvlan")
