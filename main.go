@@ -20,7 +20,8 @@ import (
 )
 
 const (
-	version = "0.1"
+	version       = "0.1"
+	ENVVAR_PREFIX = "VXR_"
 	//I know this isn't ideal, but it is hard coded in docker-plugins-helpers too
 	//so if you change it there, you'll have to change it here too
 	sockdir = "/run/docker/plugins/"
@@ -34,33 +35,39 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
-			Name:  "debug, d",
-			Usage: "Enable debugging.",
+			Name:   "debug, d",
+			Usage:  "Enable debugging.",
+			EnvVar: ENVVAR_PREFIX + "DEBUG_LOGGING",
 		},
 		cli.StringFlag{
-			Name:  "network-scope, ns",
-			Value: "local",
-			Usage: "Scope of the network. local or global.",
+			Name:   "network-scope, ns",
+			Value:  "local",
+			Usage:  "Scope of the network. local or global.",
+			EnvVar: ENVVAR_PREFIX + "NETWORK-SCOPE",
 		},
 		cli.DurationFlag{
-			Name:  "ipam-prop-timeout, pt",
-			Value: 100 * time.Millisecond,
-			Usage: "How long to wait for external route propagation",
+			Name:   "ipam-prop-timeout, pt",
+			Value:  100 * time.Millisecond,
+			Usage:  "How long to wait for external route propagation",
+			EnvVar: ENVVAR_PREFIX + "IPAM-PROP-TIMEOUT",
 		},
 		cli.DurationFlag{
-			Name:  "ipam-resp-timeout, rt",
-			Value: 10 * time.Second,
-			Usage: "Maximum allowed response milliseconds, to prevent hanging docker daemon",
+			Name:   "ipam-resp-timeout, rt",
+			Value:  10 * time.Second,
+			Usage:  "Maximum allowed response milliseconds, to prevent hanging docker daemon",
+			EnvVar: ENVVAR_PREFIX + "IPAM-RESP-TIMEOUT",
 		},
 		cli.IntFlag{
-			Name:  "ipam-exclude-first, xf",
-			Value: 0,
-			Usage: "Exclude the first n addresses from each pool from being provided as random addresses",
+			Name:   "ipam-exclude-first, xf",
+			Value:  0,
+			Usage:  "Exclude the first n addresses from each pool from being provided as random addresses",
+			EnvVar: ENVVAR_PREFIX + "IPAM-EXCLUDE-FIRST",
 		},
 		cli.IntFlag{
-			Name:  "ipam-exclude-last, xl",
-			Value: 0,
-			Usage: "Exclude the last n addresses from each pool from being provided as random addresses",
+			Name:   "ipam-exclude-last, xl",
+			Value:  0,
+			Usage:  "Exclude the last n addresses from each pool from being provided as random addresses",
+			EnvVar: ENVVAR_PREFIX + "IPAM-EXCLUDE-LAST",
 		},
 	}
 	app.Action = Run
@@ -85,8 +92,7 @@ func Run(ctx *cli.Context) {
 	xf := ctx.Int("xf")
 	xl := ctx.Int("xl")
 
-	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
-	dc, err := client.NewClient("unix:///var/run/docker.sock", "v1.23", nil, defaultHeaders)
+	dc, err := client.NewEnvClient()
 	if err != nil {
 		log.WithError(err).Fatal("failed to create docker client")
 	}
