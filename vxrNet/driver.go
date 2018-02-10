@@ -223,9 +223,7 @@ func (d *Driver) getNetworkResourceBySubnetFromCache(subnet string) *types.Netwo
 	defer d.nrCacheLock.Unlock()
 	for _, nr := range d.nrCache {
 		for _, ipc := range nr.IPAM.Config {
-			log.WithField("subnet", ipc.Subnet).WithField("to", subnet).Debug("Checking for pool")
 			if ipc.Subnet == subnet {
-				log.Debug("Returnig subnet")
 				return nr
 			}
 		}

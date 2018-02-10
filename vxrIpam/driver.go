@@ -57,37 +57,53 @@ func (d *Driver) ReleasePool(r *ipam.ReleasePoolRequest) error {
 	return nil
 }
 
+func getAddresses(address, subnet string) (*net.IPNet, *net.IPNet, *net.IPNet, error) {
+	_, sn, err := net.ParseCIDR(subnet)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	sna := &net.IPNet{
+		IP:   net.ParseIP(address),
+		Mask: sn.Mask,
+	}
+
+	_, ml := sn.Mask.Size()
+	a := &net.IPNet{
+		IP:   sna.IP,
+		Mask: net.CIDRMask(ml, ml),
+	}
+
+	return sn, sna, a, nil
+}
+
 func (d *Driver) RequestAddress(r *ipam.RequestAddressRequest) (*ipam.RequestAddressResponse, error) {
 	d.log.WithField("r", r).Debug("RequestAddress()")
-	_, subnet, err := net.ParseCIDR(r.PoolID)
+
+	subnet, addrInSubnet, addrOnly, err := getAddresses(r.Address, r.PoolID)
 	if err != nil {
-		d.log.WithError(err).Error("Error parsing pool id subnet")
+		return nil, err
 	}
 
-	addr := &net.IPNet{
-		IP:   net.ParseIP(r.Address),
-		Mask: subnet.Mask,
-	}
-
-	if r.Options["RequestAddressType"] == "com.docker.network.gateway" {
+	if r.Options["RequestAddressType"] == "com.docker.network.gateway" && r.Address != "" {
 		return &ipam.RequestAddressResponse{
-			Address: addr.String(),
+			Address: addrInSubnet.String(),
 		}, nil
 	}
 
-	_, ml := addr.Mask.Size()
-	addr.Mask = net.CIDRMask(ml, ml)
+	// keep looking for a random address until one is found
 	routes := []netlink.Route{{}}
 	for len(routes) > 0 {
-		if addr.IP == nil {
-			addr.IP = iputil.RandAddr(subnet)
+		if r.Address == "" {
+			addrOnly.IP = iputil.RandAddr(subnet)
 		}
-		routes, err = netlink.RouteListFiltered(0, &netlink.Route{Dst: addr}, netlink.RT_FILTER_DST)
+		routes, err = netlink.RouteListFiltered(0, &netlink.Route{Dst: addrOnly}, netlink.RT_FILTER_DST)
 		if err != nil {
 			d.log.WithError(err).Error("failed to get routes")
 			return nil, err
 		}
 	}
+	addrInSubnet.IP = addrOnly.IP
 
 	nr, err := d.vxrNet.GetNetworkResourceBySubnet(r.PoolID)
 	if nr == nil {
@@ -107,8 +123,9 @@ func (d *Driver) RequestAddress(r *ipam.RequestAddressRequest) (*ipam.RequestAdd
 		return nil, err
 	}
 
+	log.WithField("addronly", addrOnly.String()).Debug("adding route to")
 	err = netlink.RouteAdd(&netlink.Route{
-		Dst: addr,
+		Dst: addrOnly,
 		Gw:  gw.IP,
 	})
 	if err != nil {
@@ -116,14 +133,29 @@ func (d *Driver) RequestAddress(r *ipam.RequestAddressRequest) (*ipam.RequestAdd
 		return nil, err
 	}
 
-	addr.Mask = subnet.Mask
-
 	return &ipam.RequestAddressResponse{
-		Address: addr.String(),
+		Address: addrInSubnet.String(),
 	}, nil
 }
 
 func (d *Driver) ReleaseAddress(r *ipam.ReleaseAddressRequest) error {
 	d.log.WithField("r", r).Debug("ReleaseAddress()")
+
+	_, _, addrOnly, err := getAddresses(r.Address, r.PoolID)
+
+	gw, err := d.vxrNet.GetGatewayBySubnet(r.PoolID)
+	if err != nil {
+		return err
+	}
+
+	err = netlink.RouteDel(&netlink.Route{
+		Dst: addrOnly,
+		Gw:  gw.IP,
+	})
+	if err != nil {
+		d.log.WithError(err).Error("failed to add route")
+		return err
+	}
+
 	return nil
 }
