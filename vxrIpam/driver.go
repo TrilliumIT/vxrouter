@@ -13,6 +13,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
+// Driver is a vxrouter IPAM driver
 type Driver struct {
 	vxrNet       *vxrNet.Driver
 	propTime     time.Duration
@@ -22,6 +23,7 @@ type Driver struct {
 	log          *log.Entry
 }
 
+// NewDriver creates a Driver
 func NewDriver(vxrNet *vxrNet.Driver, propTime, respTime time.Duration, excludeFirst, excludeLast int) (*Driver, error) {
 	d := &Driver{
 		vxrNet,
@@ -34,16 +36,19 @@ func NewDriver(vxrNet *vxrNet.Driver, propTime, respTime time.Duration, excludeF
 	return d, nil
 }
 
+// GetCapabilities is called by docker on plugin start
 func (d *Driver) GetCapabilities() (*ipam.CapabilitiesResponse, error) {
 	d.log.Debug("GetCapabilites()")
 	return &ipam.CapabilitiesResponse{}, nil
 }
 
+// GetDefaultAddressSpaces is called by docker if a subnet is not specified
 func (d *Driver) GetDefaultAddressSpaces() (*ipam.AddressSpacesResponse, error) {
 	d.log.Debug("GetDefaultAddressSpaces()")
 	return &ipam.AddressSpacesResponse{}, nil
 }
 
+// RequestPool is called on network create
 func (d *Driver) RequestPool(r *ipam.RequestPoolRequest) (*ipam.RequestPoolResponse, error) {
 	d.log.WithField("r", r).Debug("RequestPool()")
 	return &ipam.RequestPoolResponse{
@@ -52,6 +57,7 @@ func (d *Driver) RequestPool(r *ipam.RequestPoolRequest) (*ipam.RequestPoolRespo
 	}, nil
 }
 
+// ReleasePool is called on network delete
 func (d *Driver) ReleasePool(r *ipam.ReleasePoolRequest) error {
 	d.log.WithField("r", r).Debug("ReleasePoolRequest()")
 	return nil
@@ -77,6 +83,7 @@ func getAddresses(address, subnet string) (*net.IPNet, *net.IPNet, *net.IPNet, e
 	return sn, sna, a, nil
 }
 
+// RequestAddress requests an address for a container, or for the gateway
 func (d *Driver) RequestAddress(r *ipam.RequestAddressRequest) (*ipam.RequestAddressResponse, error) {
 	d.log.WithField("r", r).Debug("RequestAddress()")
 
@@ -85,6 +92,8 @@ func (d *Driver) RequestAddress(r *ipam.RequestAddressRequest) (*ipam.RequestAdd
 		return nil, err
 	}
 
+	// Always respond with the gateway address if specified
+	// This is called on network create, and network create will fail if this returns an error
 	if r.Options["RequestAddressType"] == "com.docker.network.gateway" && r.Address != "" {
 		return &ipam.RequestAddressResponse{
 			Address: addrInSubnet.String(),
@@ -138,10 +147,14 @@ func (d *Driver) RequestAddress(r *ipam.RequestAddressRequest) (*ipam.RequestAdd
 	}, nil
 }
 
+// ReleaseAddress is the last thing called on container stop
 func (d *Driver) ReleaseAddress(r *ipam.ReleaseAddressRequest) error {
 	d.log.WithField("r", r).Debug("ReleaseAddress()")
 
 	_, _, addrOnly, err := getAddresses(r.Address, r.PoolID)
+	if err != nil {
+		return err
+	}
 
 	gw, err := d.vxrNet.GetGatewayBySubnet(r.PoolID)
 	if err != nil {
@@ -153,8 +166,9 @@ func (d *Driver) ReleaseAddress(r *ipam.ReleaseAddressRequest) error {
 		Gw:  gw.IP,
 	})
 	if err != nil {
-		d.log.WithError(err).Error("failed to add route")
-		return err
+		// This may not be an error, this is expected if this is the last container on this network
+		// The network driver will have already deleted the interface that holds this route
+		d.log.WithError(err).Debug("failed to delete route")
 	}
 
 	return nil
