@@ -15,6 +15,7 @@ import (
 	"github.com/TrilliumIT/docker-vxrouter/hostInterface"
 )
 
+// Driver is a vxrouter network driver
 type Driver struct {
 	scope       string
 	client      *client.Client
@@ -23,6 +24,7 @@ type Driver struct {
 	nrCacheLock *sync.Mutex
 }
 
+// NewDriver creates a new Driver
 func NewDriver(scope string, client *client.Client) (*Driver, error) {
 	d := &Driver{
 		scope,
@@ -34,6 +36,7 @@ func NewDriver(scope string, client *client.Client) (*Driver, error) {
 	return d, nil
 }
 
+// GetCapabilities is called on driver initialization
 func (d *Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
 	d.log.Debug("GetCapabilities()")
 	cap := &network.CapabilitiesResponse{
@@ -43,31 +46,37 @@ func (d *Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
 	return cap, nil
 }
 
+// CreateNetwork is called on docker network create
 func (d *Driver) CreateNetwork(r *network.CreateNetworkRequest) error {
 	d.log.WithField("r", r).Debug("CreateNetwork()")
 	return nil
 }
 
+// AllocateNetwork is never called
 func (d *Driver) AllocateNetwork(r *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
 	d.log.WithField("r", r).Debug("AllocateNetwork()")
 	return &network.AllocateNetworkResponse{}, nil
 }
 
+// DeleteNetwork is called on docker network rm
 func (d *Driver) DeleteNetwork(r *network.DeleteNetworkRequest) error {
 	d.log.WithField("r", r).Debug("DeleteNetwork()")
 	return nil
 }
 
+// FreeNetwork is never called
 func (d *Driver) FreeNetwork(r *network.FreeNetworkRequest) error {
 	d.log.WithField("r", r).Debug("FreeNetwork()")
 	return nil
 }
 
+// CreateEndpoint is called after IPAM has assigned an address, before Join is called
 func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
 	d.log.WithField("r", r).Debug("CreateEndpoint()")
 	return &network.CreateEndpointResponse{}, nil
 }
 
+// DeleteEndpoint is called after Leave, before IPAM release address
 func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 	d.log.WithField("r", r).Debug("DeleteEndpoint()")
 	nr, err := d.getNetworkResource(r.NetworkID)
@@ -77,6 +86,9 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 	}
 
 	hi, err := hostInterface.GetHostInterface(nr.Name)
+	if err != nil {
+		return err
+	}
 
 	mvlName := "cmvl_" + r.EndpointID[:7]
 	err = hi.DeleteMacvlan(mvlName)
@@ -103,11 +115,13 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 	return hi.Delete()
 }
 
+// EndpointInfo is called on inspect... maybe?
 func (d *Driver) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, error) {
 	d.log.WithField("r", r).Debug("EndpointInfo()")
 	return &network.InfoResponse{}, nil
 }
 
+// Join is the last thing called before the nic is put into the container namespace
 func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 	hi, err := d.ConnectHost(r.NetworkID)
 	if err != nil {
@@ -131,6 +145,7 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 	return jr, nil
 }
 
+// ConnectHost is not used by docker, it is called by IPAM because IPAM needs to make sure that the host is connected before routes can be added to allocate an address
 func (d *Driver) ConnectHost(id string) (*hostInterface.HostInterface, error) {
 	log := d.log.WithField("id", id)
 	log.Debug("ConnectHost()")
@@ -150,26 +165,31 @@ func (d *Driver) ConnectHost(id string) (*hostInterface.HostInterface, error) {
 	return hostInterface.GetOrCreateHostInterface(nr.Name, gw, nr.Options)
 }
 
+// Leave is the first thing called on container stop
 func (d *Driver) Leave(r *network.LeaveRequest) error {
 	d.log.WithField("r", r).Debug("Leave()")
 	return nil
 }
 
+// DiscoverNew is not implemented by this driver
 func (d *Driver) DiscoverNew(r *network.DiscoveryNotification) error {
 	d.log.WithField("r", r).Debug("DiscoverNew()")
 	return nil
 }
 
+// DiscoverDelete is not implemented by this driver
 func (d *Driver) DiscoverDelete(r *network.DiscoveryNotification) error {
 	d.log.WithField("r", r).Debug("DiscoverDelete()")
 	return nil
 }
 
+// ProgramExternalConnectivity is not implemented by this driver
 func (d *Driver) ProgramExternalConnectivity(r *network.ProgramExternalConnectivityRequest) error {
 	d.log.WithField("r", r).Debug("ProgramExternalConnectivity()")
 	return nil
 }
 
+// RevokeExternalConnectivity is not implemented by this driver
 func (d *Driver) RevokeExternalConnectivity(r *network.RevokeExternalConnectivityRequest) error {
 	d.log.WithField("r", r).Debug("RevokeExternalConnectivity()")
 	return nil
@@ -195,6 +215,7 @@ func gatewayFromIPAMConfigs(ics []apinet.IPAMConfig) (*net.IPNet, error) {
 }
 
 func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
+	log := d.log.WithField("net_id", id)
 	d.nrCacheLock.Lock()
 	defer d.nrCacheLock.Unlock()
 	var err error
@@ -204,12 +225,12 @@ func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
 
 	nr, err := d.client.NetworkInspect(context.Background(), id)
 	if err != nil {
-		d.log.WithError(err).Error("failed to inspect network %v", id)
+		log.WithError(err).Error("failed to inspect network")
 		return nil, err
 	}
 
 	if nr.Driver != "vxrNet" {
-		err := fmt.Errorf("network %v is not a vxrNet", id)
+		err := fmt.Errorf("network is not a vxrNet")
 		return nil, err
 	}
 
@@ -238,12 +259,17 @@ func (d *Driver) cacheAllNetworkResources() error {
 	}
 	for _, nr := range nets {
 		if nr.Driver == "vxrNet" {
-			d.getNetworkResource(nr.ID)
+			if _, err := d.getNetworkResource(nr.ID); err != nil {
+				// we don't want to bail on errors here, we're just trying to cache everything we can
+				d.log.WithField("net_id", nr.ID).WithError(err).Error("error caching network resource")
+			}
+
 		}
 	}
 	return nil
 }
 
+// GetNetworkResourceBySubnet is used by the IPAM driver to find the correct network resource for a given pool
 func (d *Driver) GetNetworkResourceBySubnet(subnet string) (*types.NetworkResource, error) {
 	nr := d.getNetworkResourceBySubnetFromCache(subnet)
 	if nr != nil {
@@ -256,6 +282,7 @@ func (d *Driver) GetNetworkResourceBySubnet(subnet string) (*types.NetworkResour
 	return d.getNetworkResourceBySubnetFromCache(subnet), nil
 }
 
+// GetGatewayBySubnet is used by the IPAM driver to find the correct gateway address for a given pool
 func (d *Driver) GetGatewayBySubnet(subnet string) (*net.IPNet, error) {
 	nr, err := d.GetNetworkResourceBySubnet(subnet)
 	if err != nil {
