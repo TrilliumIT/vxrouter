@@ -14,6 +14,12 @@
   version = "v1.0.4"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/TrilliumIT/iputil"
+  packages = ["."]
+  revision = "377eb56ebb29f092df8f5d1d49e39958e1bec0a5"
+
+[[projects]]
   name = "github.com/coreos/go-systemd"
   packages = ["activation"]
   revision = "40e2722dffead74698ca12a750f64ef313ddce05"
@@ -109,7 +115,7 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
-  revision = "5119cf507ed5294cc409c092980c7497ee5d6fd2"
+  revision = "9de5f2eaf759b4c4550b3db39fed2e9e5f86f45c"
 
 [[projects]]
   branch = "master"
@@ -133,6 +139,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3f815b0d48860d3f079cc832083e9647ea159c328872e4d0a2360d0552ff3147"
+  inputs-digest = "aec304c456de1e1fddf2be84be2a2ac5316a326ac03195a2e9c8201ffba8ef3e"
   solver-name = "gps-cdcl"
   solver-version = 1
