@@ -10,6 +10,7 @@ import (
 	"github.com/TrilliumIT/docker-vxrouter/vxlan"
 )
 
+// HostInterface holds a vxlan and a host macvlan interface used for the gateway interface on a container network
 type HostInterface struct {
 	name string
 	vxl  *vxlan.Vxlan
@@ -17,6 +18,7 @@ type HostInterface struct {
 	log  *log.Entry
 }
 
+// GetOrCreateHostInterface creates required host interfaces if they don't exist, or gets them if they already do
 func GetOrCreateHostInterface(name string, gateway *net.IPNet, opts map[string]string) (*HostInterface, error) {
 	log := log.WithField("HostInterface", name)
 	log.Debug("GetOrCreateHostInterface")
@@ -63,6 +65,7 @@ func GetOrCreateHostInterface(name string, gateway *net.IPNet, opts map[string]s
 	return hi, nil
 }
 
+// GetHostInterface gets host interfaces by name
 func GetHostInterface(name string) (*HostInterface, error) {
 	hi, err := getHostInterface(name)
 	if err != nil {
@@ -95,17 +98,20 @@ func getHostInterface(name string) (*HostInterface, error) {
 	return hi, err
 }
 
+// CreateMacvlan creates container macvlan interfaces
 func (hi *HostInterface) CreateMacvlan(name string) error {
 	hi.log.WithField("Macvlan", name).Debug("CreateMacvlan")
 	_, err := hi.vxl.CreateMacvlan(name)
 	return err
 }
 
+// DeleteMacvlan deletes a container macvlan interface
 func (hi *HostInterface) DeleteMacvlan(name string) error {
 	hi.log.WithField("Macvlan", name).Debug("DeleteMacvlan")
 	return hi.vxl.DeleteMacvlan(name)
 }
 
+// Delete deletes the host interface, only if there are no additional slave devices attached to the vxlan
 func (hi *HostInterface) Delete() error {
 	hi.log.Debug("Delete")
 
@@ -115,11 +121,15 @@ func (hi *HostInterface) Delete() error {
 		return err
 	}
 
+	var mvl *macvlan.Macvlan
 	for _, slave := range slaves {
-		if mvl, err := macvlan.FromLink(slave); err == nil && mvl.Equals(hi.mvl) {
+		// err != nil implies this slave is not a macvlan device, something was added manually, we better not delete the interface
+		// Only slave interface that should be here is hi.mvl
+		if mvl, err = macvlan.FromLink(slave); err == nil && mvl.Equals(hi.mvl) {
 			continue
 		}
 		err = fmt.Errorf("other slave devices still exist on this vxlan")
+		return err
 	}
 
 	return hi.vxl.Delete()
