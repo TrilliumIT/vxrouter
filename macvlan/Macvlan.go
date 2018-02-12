@@ -8,11 +8,13 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+// Macvlan is a macvlan interface, for either a host or a container
 type Macvlan struct {
 	nl  *netlink.Macvlan
 	log *log.Entry
 }
 
+// NewMacvlan creates a macvlan interface, under the parent interface index
 func NewMacvlan(name string, parent int) (*Macvlan, error) {
 	log := log.WithField("Macvlan", name)
 	log.Debug("NewMacvlan")
@@ -38,6 +40,7 @@ func NewMacvlan(name string, parent int) (*Macvlan, error) {
 	return &Macvlan{nl, log}, nil
 }
 
+// nolint dupl
 func FromName(name string) (*Macvlan, error) {
 	log := log.WithField("Macvlan", name)
 	log.Debug("FromName")
@@ -50,6 +53,8 @@ func FromName(name string) (*Macvlan, error) {
 	return FromLink(link)
 }
 
+// FromIndex returns a Macvlan from an interface index
+// nolint dupl
 func FromIndex(index int) (*Macvlan, error) {
 	log := log.WithField("Macvlan", index)
 	log.Debug("FromIndex")
@@ -62,6 +67,8 @@ func FromIndex(index int) (*Macvlan, error) {
 	return FromLink(link)
 }
 
+// FromLink returns a Macvlan from an interface index
+// nolint dupl
 func FromLink(link netlink.Link) (*Macvlan, error) {
 	log := log.WithField("Macvlan", link.Attrs().Name)
 	log.Debug("FromLink")
@@ -74,15 +81,18 @@ func FromLink(link netlink.Link) (*Macvlan, error) {
 	return nil, err
 }
 
+// Equals determines if m and m2 are the same interface
 func (m *Macvlan) Equals(m2 *Macvlan) bool {
 	return m.nl.Attrs().Index == m2.nl.Attrs().Index
 }
 
+// AddAddress adds an ip address to a Macvlan interface
 func (m *Macvlan) AddAddress(addr *net.IPNet) error {
 	m.log.Debug("AddAddress")
 	return netlink.AddrAdd(m.nl, &netlink.Addr{IPNet: addr})
 }
 
+// Delete deletes a Macvlan interface
 func (m *Macvlan) Delete() error {
 	m.log.Debug("Delete")
 
@@ -97,6 +107,7 @@ func (m *Macvlan) Delete() error {
 	return netlink.LinkDel(m.nl)
 }
 
+// GetAddresses returns IP Addresses on a Macvlan interface
 func (m *Macvlan) GetAddresses() ([]*net.IPNet, error) {
 	addrs, err := netlink.AddrList(m.nl, 0)
 	if err != nil {
@@ -109,6 +120,7 @@ func (m *Macvlan) GetAddresses() ([]*net.IPNet, error) {
 	return r, nil
 }
 
+// HasAddress returns true if addr is bound to the Macvlan interface
 func (m *Macvlan) HasAddress(addr *net.IPNet) bool {
 	addrs, _ := m.GetAddresses()
 	for _, a := range addrs {
@@ -119,6 +131,7 @@ func (m *Macvlan) HasAddress(addr *net.IPNet) bool {
 	return false
 }
 
+// GetParentIndex returns the index of the parent interface
 func (m *Macvlan) GetParentIndex() int {
 	m.log.Debug("GetParentIndex")
 	return m.nl.Attrs().ParentIndex
