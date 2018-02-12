@@ -11,11 +11,9 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/client"
-	"github.com/docker/go-plugins-helpers/ipam"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/urfave/cli"
 
-	"github.com/TrilliumIT/docker-vxrouter/vxrIpam"
 	"github.com/TrilliumIT/docker-vxrouter/vxrNet"
 )
 
@@ -26,7 +24,7 @@ const (
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "docker-vxlan-plugin"
+	app.Name = "docker-vxrouter"
 	app.Usage = "Docker vxLan Networking"
 	app.Version = version
 
@@ -54,18 +52,6 @@ func main() {
 			Usage:  "Maximum allowed response milliseconds, to prevent hanging docker daemon",
 			EnvVar: envPrefix + "IPAM-RESP-TIMEOUT",
 		},
-		cli.IntFlag{
-			Name:   "ipam-exclude-first, xf",
-			Value:  0,
-			Usage:  "Exclude the first n addresses from each pool from being provided as random addresses",
-			EnvVar: envPrefix + "IPAM-EXCLUDE-FIRST",
-		},
-		cli.IntFlag{
-			Name:   "ipam-exclude-last, xl",
-			Value:  0,
-			Usage:  "Exclude the last n addresses from each pool from being provided as random addresses",
-			EnvVar: envPrefix + "IPAM-EXCLUDE-LAST",
-		},
 	}
 	app.Action = Run
 	err := app.Run(os.Args)
@@ -89,58 +75,37 @@ func Run(ctx *cli.Context) {
 	ns := ctx.String("ns")
 	pt := ctx.Duration("pt")
 	rt := ctx.Duration("rt")
-	xf := ctx.Int("xf")
-	xl := ctx.Int("xl")
 
 	dc, err := client.NewEnvClient()
 	if err != nil {
 		log.WithError(err).Fatal("failed to create docker client")
 	}
 
-	nd, err := vxrNet.NewDriver(ns, dc)
+	nd, err := vxrNet.NewDriver(ns, pt, rt, dc)
 	if err != nil {
 		log.WithError(err).Fatal("failed to create vxrNet driver")
 	}
-	id, err := vxrIpam.NewDriver(nd, pt, rt, xf, xl)
-	if err != nil {
-		log.WithError(err).Fatal("failed to create vxrIpam driver")
-	}
-	ncerr := make(chan error)
-	icerr := make(chan error)
+	cerr := make(chan error)
 
 	nh := network.NewHandler(nd)
-	ih := ipam.NewHandler(id)
-	go func() { ncerr <- nh.ServeUnix("vxrNet", 0) }()
-	go func() { icerr <- ih.ServeUnix("vxrIpam", 0) }()
+	go func() { cerr <- nh.ServeUnix("vxrNet", 0) }()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	select {
-	case err = <-ncerr:
+	case err = <-cerr:
 		log.WithError(err).Error("error from vxrNet driver")
-		close(ncerr)
-	case err = <-icerr:
-		log.WithError(err).Error("error from vxrIpam driver")
-		close(icerr)
+		close(cerr)
 	case <-c:
 	}
 
-	err = ih.Shutdown(context.Background())
-	if err != nil {
-		log.WithError(err).Error("Error shutting down vxrIpam driver")
-	}
 	err = nh.Shutdown(context.Background())
 	if err != nil {
 		log.WithError(err).Error("Error shutting down vxrNet driver")
 	}
 
-	err = <-icerr
-	if err != nil && err != http.ErrServerClosed {
-		log.WithError(err).Error("error from vxrIpam driver")
-	}
-
-	err = <-ncerr
+	err = <-cerr
 	if err != nil && err != http.ErrServerClosed {
 		log.WithError(err).Error("error from vxrNet driver")
 	}

@@ -4,34 +4,40 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/types"
-	apinet "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/network"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/net/context"
 
 	"github.com/TrilliumIT/docker-vxrouter/hostInterface"
+	"github.com/TrilliumIT/iputil"
 )
 
 // Driver is a vxrouter network driver
 type Driver struct {
 	scope       string
+	propTime    time.Duration
+	respTime    time.Duration
 	client      *client.Client
 	log         *log.Entry
 	nrCache     map[string]*types.NetworkResource
-	nrCacheLock *sync.Mutex
+	nrCacheLock *sync.RWMutex
 }
 
 // NewDriver creates a new Driver
-func NewDriver(scope string, client *client.Client) (*Driver, error) {
+func NewDriver(scope string, propTime, respTime time.Duration, client *client.Client) (*Driver, error) {
 	d := &Driver{
 		scope,
+		propTime,
+		respTime,
 		client,
 		log.WithField("driver", "vxrNet"),
 		make(map[string]*types.NetworkResource),
-		&sync.Mutex{},
+		&sync.RWMutex{},
 	}
 	return d, nil
 }
@@ -49,6 +55,34 @@ func (d *Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
 // CreateNetwork is called on docker network create
 func (d *Driver) CreateNetwork(r *network.CreateNetworkRequest) error {
 	d.log.WithField("r", r).Debug("CreateNetwork()")
+
+	//Even though we are stateless
+	//Validate required options on create to notify the user
+
+	opts, ok := r.Options["com.docker.network.generic"].(map[string]interface{})
+	if !ok {
+		err := fmt.Errorf("did not retrieve the options array for the network")
+		log.WithError(err).Error()
+		return err
+	}
+
+	//make sure gateway option was specified
+	gw, ok := opts["gateway"]
+	if !ok {
+		err := fmt.Errorf("cannot create a network without a CIDR gateway (-o gateway=<address>/<mask>)")
+		d.log.WithError(err)
+		return err
+	}
+
+	//make sure gateway option is a CIDR
+	_, _, err := net.ParseCIDR(gw.(string))
+	if err != nil {
+		d.log.WithError(err).WithField("gw", gw).Error("failed to parse gateway")
+		return err
+	}
+
+	//TODO: validate vlan was specified and is in the correct range
+
 	return nil
 }
 
@@ -73,12 +107,64 @@ func (d *Driver) FreeNetwork(r *network.FreeNetworkRequest) error {
 // CreateEndpoint is called after IPAM has assigned an address, before Join is called
 func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
 	d.log.WithField("r", r).Debug("CreateEndpoint()")
-	return &network.CreateEndpointResponse{}, nil
+
+	nr, err := d.getNetworkResource(r.NetworkID)
+	if err != nil {
+		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
+		return nil, err
+	}
+
+	gw, sn, _ := net.ParseCIDR(nr.Options["gateway"])
+
+	_, err = hostInterface.GetOrCreateHostInterface(nr.Name, &net.IPNet{IP: gw, Mask: sn.Mask}, nr.Options)
+	if err != nil {
+		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get or create host interface")
+		return nil, err
+	}
+
+	addrInSubnet, addrOnly := getAddresses(r.Interface.Address, sn)
+
+	//TODO: implement timeouts and exclusions
+
+	// keep looking for a random address until one is found
+	routes := []netlink.Route{{}}
+	for len(routes) > 0 {
+		if r.Interface.Address == "" {
+			addrOnly.IP = iputil.RandAddr(sn)
+		}
+		routes, err = netlink.RouteListFiltered(0, &netlink.Route{Dst: addrOnly}, netlink.RT_FILTER_DST)
+		if err != nil {
+			d.log.WithError(err).Error("failed to get routes")
+			return nil, err
+		}
+	}
+	addrInSubnet.IP = addrOnly.IP
+
+	// add host route to routing table
+	d.log.WithField("addronly", addrOnly.String()).Debug("adding route to")
+	err = netlink.RouteAdd(&netlink.Route{
+		Dst: addrOnly,
+		Gw:  gw,
+	})
+	if err != nil {
+		d.log.WithError(err).Error("failed to add route")
+		return nil, err
+	}
+
+	//TODO: wait prop-time and check table again
+
+	cer := &network.CreateEndpointResponse{
+		Interface: &network.EndpointInterface{
+			Address: addrInSubnet.String(),
+		},
+	}
+	return cer, nil
 }
 
-// DeleteEndpoint is called after Leave, before IPAM release address
+// DeleteEndpoint is called after Leave
 func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 	d.log.WithField("r", r).Debug("DeleteEndpoint()")
+
 	nr, err := d.getNetworkResource(r.NetworkID)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
@@ -103,16 +189,36 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 		return err
 	}
 
+	delHi := true
+	delRoute := ""
 	for _, c := range containers {
 		if ns, ok := c.NetworkSettings.Networks[nr.Name]; ok {
-			if ns.EndpointID != r.EndpointID {
+			if ns.EndpointID == r.EndpointID {
+				delRoute = ns.IPAddress
+			} else {
 				d.log.Debug("other containers are still running on this network")
-				return nil
+				delHi = false
 			}
 		}
 	}
 
-	return hi.Delete()
+	gw, sn, _ := net.ParseCIDR(nr.Options["gateway"])
+	_, addrOnly := getAddresses(delRoute, sn)
+
+	err = netlink.RouteDel(&netlink.Route{
+		Dst: addrOnly,
+		Gw:  gw,
+	})
+	if err != nil {
+		d.log.WithError(err).Debug("failed to delete route")
+		return err
+	}
+
+	if delHi {
+		return hi.Delete()
+	}
+
+	return nil
 }
 
 // EndpointInfo is called on inspect... maybe?
@@ -123,7 +229,13 @@ func (d *Driver) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, er
 
 // Join is the last thing called before the nic is put into the container namespace
 func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
-	hi, err := d.ConnectHost(r.NetworkID)
+	nr, err := d.getNetworkResource(r.NetworkID)
+	if err != nil {
+		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
+		return nil, err
+	}
+
+	hi, err := hostInterface.GetHostInterface(nr.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -135,39 +247,30 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 		return nil, err
 	}
 
+	gw, _, err := net.ParseCIDR(nr.Options["gateway"])
+
 	jr := &network.JoinResponse{
 		InterfaceName: network.InterfaceName{
 			SrcName:   mvlName,
 			DstPrefix: "eth",
 		},
+		Gateway: gw.String(),
 	}
 
 	return jr, nil
 }
 
-// ConnectHost is not used by docker, it is called by IPAM because IPAM needs to make sure that the host is connected before routes can be added to allocate an address
-func (d *Driver) ConnectHost(id string) (*hostInterface.HostInterface, error) {
-	log := d.log.WithField("id", id)
-	log.Debug("ConnectHost()")
-
-	nr, err := d.getNetworkResource(id)
-	if err != nil {
-		log.WithError(err).Error("failed to get network resource")
-		return nil, err
-	}
-
-	gw, err := gatewayFromIPAMConfigs(nr.IPAM.Config)
-	if err != nil {
-		d.log.WithError(err).Error("failed to get gateway cidr from ipam config")
-		return nil, err
-	}
-
-	return hostInterface.GetOrCreateHostInterface(nr.Name, gw, nr.Options)
-}
-
 // Leave is the first thing called on container stop
 func (d *Driver) Leave(r *network.LeaveRequest) error {
 	d.log.WithField("r", r).Debug("Leave()")
+
+	//hi, err := hostInterface.GetHostInterface(r.NetworkID)
+	//if err != nil {
+	//	return err
+	//}
+
+	//TODO: remove /32 route from main table?
+
 	return nil
 }
 
@@ -192,37 +295,27 @@ func (d *Driver) ProgramExternalConnectivity(r *network.ProgramExternalConnectiv
 // RevokeExternalConnectivity is not implemented by this driver
 func (d *Driver) RevokeExternalConnectivity(r *network.RevokeExternalConnectivityRequest) error {
 	d.log.WithField("r", r).Debug("RevokeExternalConnectivity()")
+
 	return nil
-}
-
-//loop over the IPAMConfig array, combine gw and sn into a cidr
-func gatewayFromIPAMConfigs(ics []apinet.IPAMConfig) (*net.IPNet, error) {
-	for _, ic := range ics {
-		gws := ic.Gateway
-		sns := ic.Subnet
-		if gws != "" && sns != "" {
-			gw := net.ParseIP(gws)
-			if gw == nil {
-				err := fmt.Errorf("failed to parse gateway from ipam config")
-				return nil, err
-			}
-			_, sn, err := net.ParseCIDR(sns)
-			return &net.IPNet{IP: gw, Mask: sn.Mask}, err
-		}
-	}
-
-	return nil, fmt.Errorf("no gateway with subnet found in ipam config")
 }
 
 func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
 	log := d.log.WithField("net_id", id)
-	d.nrCacheLock.Lock()
-	defer d.nrCacheLock.Unlock()
+	log.Debug("getNetworkResource")
+
+	//first check local cache with a read-only mutex
+	d.nrCacheLock.RLock()
+	//can't defer unlock, because we need to unlock
 	var err error
 	if nr, ok := d.nrCache[id]; ok {
+		d.nrCacheLock.RUnlock()
 		return nr, nil
 	}
+	d.nrCacheLock.RUnlock()
 
+	//netid wasn't in cache, fetch from docker inspect
+	d.nrCacheLock.Lock()
+	defer d.nrCacheLock.Unlock()
 	nr, err := d.client.NetworkInspect(context.Background(), id)
 	if err != nil {
 		log.WithError(err).Error("failed to inspect network")
@@ -239,54 +332,17 @@ func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
 	return &nr, nil
 }
 
-func (d *Driver) getNetworkResourceBySubnetFromCache(subnet string) *types.NetworkResource {
-	d.nrCacheLock.Lock()
-	defer d.nrCacheLock.Unlock()
-	for _, nr := range d.nrCache {
-		for _, ipc := range nr.IPAM.Config {
-			if ipc.Subnet == subnet {
-				return nr
-			}
-		}
+func getAddresses(address string, sn *net.IPNet) (*net.IPNet, *net.IPNet) {
+	sna := &net.IPNet{
+		IP:   net.ParseIP(address),
+		Mask: sn.Mask,
 	}
-	return nil
-}
 
-func (d *Driver) cacheAllNetworkResources() error {
-	nets, err := d.client.NetworkList(context.Background(), types.NetworkListOptions{})
-	if err != nil {
-		return err
+	_, ml := sn.Mask.Size()
+	a := &net.IPNet{
+		IP:   sna.IP,
+		Mask: net.CIDRMask(ml, ml),
 	}
-	for _, nr := range nets {
-		if nr.Driver == "vxrNet" {
-			if _, err := d.getNetworkResource(nr.ID); err != nil {
-				// we don't want to bail on errors here, we're just trying to cache everything we can
-				d.log.WithField("net_id", nr.ID).WithError(err).Error("error caching network resource")
-			}
 
-		}
-	}
-	return nil
-}
-
-// GetNetworkResourceBySubnet is used by the IPAM driver to find the correct network resource for a given pool
-func (d *Driver) GetNetworkResourceBySubnet(subnet string) (*types.NetworkResource, error) {
-	nr := d.getNetworkResourceBySubnetFromCache(subnet)
-	if nr != nil {
-		return nr, nil
-	}
-	err := d.cacheAllNetworkResources()
-	if err != nil {
-		return nil, err
-	}
-	return d.getNetworkResourceBySubnetFromCache(subnet), nil
-}
-
-// GetGatewayBySubnet is used by the IPAM driver to find the correct gateway address for a given pool
-func (d *Driver) GetGatewayBySubnet(subnet string) (*net.IPNet, error) {
-	nr, err := d.GetNetworkResourceBySubnet(subnet)
-	if err != nil {
-		return nil, err
-	}
-	return gatewayFromIPAMConfigs(nr.IPAM.Config)
+	return sna, a
 }
