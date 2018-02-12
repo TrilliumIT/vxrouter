@@ -3,6 +3,7 @@ package vxrNet
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -70,7 +71,7 @@ func (d *Driver) CreateNetwork(r *network.CreateNetworkRequest) error {
 	gw, ok := opts["gateway"]
 	if !ok {
 		err := fmt.Errorf("cannot create a network without a CIDR gateway (-o gateway=<address>/<mask>)")
-		d.log.WithError(err)
+		d.log.WithError(err).Error()
 		return err
 	}
 
@@ -81,7 +82,23 @@ func (d *Driver) CreateNetwork(r *network.CreateNetworkRequest) error {
 		return err
 	}
 
-	//TODO: validate vlan was specified and is in the correct range
+	vxlID, ok := opts["vxlanid"]
+	if !ok {
+		err := fmt.Errorf("cannot create a network without a vxlanid (-o vxlanid=<0-16777215>)")
+		d.log.WithError(err).Error()
+		return err
+	}
+
+	vid, err := strconv.Atoi(vxlID.(string))
+	if err != nil {
+		d.log.WithError(err).WithField("vxlanid", vxlID.(string)).Errorf("failed to parse vxlanid")
+		return err
+	}
+	if vid < 0 || vid > 16777215 {
+		err := fmt.Errorf("vxlanid (%v) is out of range", vid)
+		d.log.WithError(err).Error()
+		return err
+	}
 
 	return nil
 }
@@ -263,14 +280,6 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 // Leave is the first thing called on container stop
 func (d *Driver) Leave(r *network.LeaveRequest) error {
 	d.log.WithField("r", r).Debug("Leave()")
-
-	//hi, err := hostInterface.GetHostInterface(r.NetworkID)
-	//if err != nil {
-	//	return err
-	//}
-
-	//TODO: remove /32 route from main table?
-
 	return nil
 }
 
@@ -305,7 +314,6 @@ func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
 
 	//first check local cache with a read-only mutex
 	d.nrCacheLock.RLock()
-	//can't defer unlock, because we need to unlock
 	var err error
 	if nr, ok := d.nrCache[id]; ok {
 		d.nrCacheLock.RUnlock()
