@@ -20,11 +20,8 @@ import (
 )
 
 const (
-	version       = "0.1"
-	ENVVAR_PREFIX = "VXR_"
-	//I know this isn't ideal, but it is hard coded in docker-plugins-helpers too
-	//so if you change it there, you'll have to change it here too
-	sockdir = "/run/docker/plugins/"
+	version   = "0.1"
+	envPrefix = "VXR_"
 )
 
 func main() {
@@ -37,41 +34,44 @@ func main() {
 		cli.BoolFlag{
 			Name:   "debug, d",
 			Usage:  "Enable debugging.",
-			EnvVar: ENVVAR_PREFIX + "DEBUG_LOGGING",
+			EnvVar: envPrefix + "DEBUG_LOGGING",
 		},
 		cli.StringFlag{
 			Name:   "network-scope, ns",
 			Value:  "local",
 			Usage:  "Scope of the network. local or global.",
-			EnvVar: ENVVAR_PREFIX + "NETWORK-SCOPE",
+			EnvVar: envPrefix + "NETWORK-SCOPE",
 		},
 		cli.DurationFlag{
 			Name:   "ipam-prop-timeout, pt",
 			Value:  100 * time.Millisecond,
 			Usage:  "How long to wait for external route propagation",
-			EnvVar: ENVVAR_PREFIX + "IPAM-PROP-TIMEOUT",
+			EnvVar: envPrefix + "IPAM-PROP-TIMEOUT",
 		},
 		cli.DurationFlag{
 			Name:   "ipam-resp-timeout, rt",
 			Value:  10 * time.Second,
 			Usage:  "Maximum allowed response milliseconds, to prevent hanging docker daemon",
-			EnvVar: ENVVAR_PREFIX + "IPAM-RESP-TIMEOUT",
+			EnvVar: envPrefix + "IPAM-RESP-TIMEOUT",
 		},
 		cli.IntFlag{
 			Name:   "ipam-exclude-first, xf",
 			Value:  0,
 			Usage:  "Exclude the first n addresses from each pool from being provided as random addresses",
-			EnvVar: ENVVAR_PREFIX + "IPAM-EXCLUDE-FIRST",
+			EnvVar: envPrefix + "IPAM-EXCLUDE-FIRST",
 		},
 		cli.IntFlag{
 			Name:   "ipam-exclude-last, xl",
 			Value:  0,
 			Usage:  "Exclude the last n addresses from each pool from being provided as random addresses",
-			EnvVar: ENVVAR_PREFIX + "IPAM-EXCLUDE-LAST",
+			EnvVar: envPrefix + "IPAM-EXCLUDE-LAST",
 		},
 	}
 	app.Action = Run
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	if err != nil {
+		log.WithError(err).Fatal("error running app")
+	}
 }
 
 // Run initializes the driver
@@ -113,14 +113,14 @@ func Run(ctx *cli.Context) {
 	go func() { ncerr <- nh.ServeUnix("vxrNet", 0) }()
 	go func() { icerr <- ih.ServeUnix("vxrIpam", 0) }()
 
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	select {
-	case err := <-ncerr:
+	case err = <-ncerr:
 		log.WithError(err).Error("error from vxrNet driver")
 		close(ncerr)
-	case err := <-icerr:
+	case err = <-icerr:
 		log.WithError(err).Error("error from vxrIpam driver")
 		close(icerr)
 	case <-c:
