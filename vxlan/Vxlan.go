@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	ENVVAR_PREFIX = "VXR_"
+	envPrefix = "VXR_"
 )
 
+// Vxlan is a vxlan interface
 type Vxlan struct {
 	nl  *netlink.Vxlan
 	log *log.Entry
@@ -46,14 +47,15 @@ func linkIndexByName(name string) (int, error) {
 
 }
 
+// NewVxlan creates a new vxlan interface
 func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 	log := log.WithField("Vxlan", vxlanName)
 	var ok bool
 	keys := [...]string{"vxlanmtu", "vxlanhardwareaddr", "vxlantxqlen", "vxlanid", "vtepdev", "srcaddr", "group", "ttl", "tos", "learning", "proxy", "rsc", "l2miss", "l3miss", "noage", "gbp", "age", "limit", "port", "portlow", "porthigh", "vxlanhardwareaddr", "vxlanmtu"}
 
 	for _, k := range keys {
-		if _, ok = opts[k]; !ok && os.Getenv(ENVVAR_PREFIX+k) != "" {
-			opts[k] = os.Getenv(ENVVAR_PREFIX + k)
+		if _, ok = opts[k]; !ok && os.Getenv(envPrefix+k) != "" {
+			opts[k] = os.Getenv(envPrefix + k)
 		}
 	}
 
@@ -66,6 +68,7 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 	// Parse interface options
 	var err error
 	for k, v := range opts {
+		//nolint vetshadow
 		log := log.WithField(k, v)
 		switch strings.ToLower(k) {
 		case "vxlanmtu":
@@ -125,8 +128,8 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 
 	// Parse interface options
 	for k, v := range opts {
+		// nolint vetshadow
 		log := log.WithField(k, v)
-		var err error
 		switch strings.ToLower(k) {
 		case "vxlanhardwareaddr":
 			var hardwareAddr net.HardwareAddr
@@ -159,6 +162,7 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 	return &Vxlan{nl, log}, nil
 }
 
+// GetVxlan gets a vxlan interface by name
 func GetVxlan(name string) (*Vxlan, error) {
 	log := log.WithField("Vxlan", name)
 	log.Debug("GetVxlan")
@@ -177,11 +181,13 @@ func GetVxlan(name string) (*Vxlan, error) {
 	return nil, fmt.Errorf("link is not a vxlan")
 }
 
+// CreateMacvlan creates a macvlan as a slave to v
 func (v *Vxlan) CreateMacvlan(name string) (*macvlan.Macvlan, error) {
 	v.log.Debug("CreateMacVlan")
 	return macvlan.NewMacvlan(name, v.nl.LinkAttrs.Index)
 }
 
+// DeleteMacvlan deletes the slave macvlan interface by name
 func (v *Vxlan) DeleteMacvlan(name string) error {
 	v.log.Debug("DeleteMacvlan")
 
@@ -197,12 +203,14 @@ func (v *Vxlan) DeleteMacvlan(name string) error {
 	return mvl.Delete()
 }
 
-//host macvlan ind address are implicitely deleted when calling this
+// Delete deletes the vxlan interface.
+// Any child macvlans will automatically be deleted by the kernel.
 func (v *Vxlan) Delete() error {
 	v.log.Debug("Delete")
 	return netlink.LinkDel(v.nl)
 }
 
+// GetMacVlans returns all slave macvlan interfaces
 func (v *Vxlan) GetMacVlans() ([]*macvlan.Macvlan, error) {
 	v.log.Debug("GetMacVlans")
 	r := []*macvlan.Macvlan{}
@@ -222,6 +230,7 @@ func (v *Vxlan) GetMacVlans() ([]*macvlan.Macvlan, error) {
 	return r, nil
 }
 
+// GetSlaveDevices gets all slave devices, including macvlans, but possibly others
 func (v *Vxlan) GetSlaveDevices() ([]netlink.Link, error) {
 	v.log.Debug("GetSlaveDevices")
 	r := []netlink.Link{}
