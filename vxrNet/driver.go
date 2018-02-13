@@ -206,29 +206,27 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 		return err
 	}
 
-	delHi := true
-	delRoute := ""
-	for _, c := range containers {
-		if ns, ok := c.NetworkSettings.Networks[nr.Name]; ok {
-			if ns.EndpointID == r.EndpointID {
-				delRoute = ns.IPAddress
-			} else {
-				d.log.Debug("other containers are still running on this network")
-				delHi = false
-			}
-		}
-	}
-
 	gw, sn, _ := net.ParseCIDR(nr.Options["gateway"])
-	_, addrOnly := getAddresses(delRoute, sn)
+	delHi := true
+	for _, c := range containers {
+		ns, ok := c.NetworkSettings.Networks[nr.Name]
+		if !ok {
+			continue
+		}
 
-	err = netlink.RouteDel(&netlink.Route{
-		Dst: addrOnly,
-		Gw:  gw,
-	})
-	if err != nil {
-		d.log.WithError(err).Debug("failed to delete route")
-		return err
+		if ns.EndpointID != r.EndpointID {
+			d.log.Debug("other containers are still running on this network")
+			delHi = false
+			continue
+		}
+
+		if err := delRoute(ns.IPAddress); err != nil {
+			d.log.WithError(err).Debug("failed to delete route")
+			return err
+		}
+		if delHi == false {
+			break
+		}
 	}
 
 	if delHi {
@@ -236,6 +234,15 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 	}
 
 	return nil
+}
+
+func delRoute(ip string) error {
+	_, addrOnly := getAddresses(ns.IPAddress, sn)
+
+	return netlink.RouteDel(&netlink.Route{
+		Dst: addrOnly,
+		Gw:  gw,
+	})
 }
 
 // EndpointInfo is called on inspect... maybe?
