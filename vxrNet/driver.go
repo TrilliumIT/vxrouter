@@ -20,7 +20,8 @@ import (
 )
 
 const (
-	envPrefix = "VXR_"
+	envPrefix  = "VXR_"
+	DriverName = "vxrNet"
 )
 
 // Driver is a vxrouter network driver
@@ -41,7 +42,7 @@ func NewDriver(scope string, propTime, respTime time.Duration, client *client.Cl
 		propTime,
 		respTime,
 		client,
-		log.WithField("driver", "vxrNet"),
+		log.WithField("driver", DriverName),
 		make(map[string]*types.NetworkResource),
 		&sync.RWMutex{},
 	}
@@ -338,7 +339,7 @@ func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
 		return nil, err
 	}
 
-	if nr.Driver != "vxrNet" {
+	if nr.Driver != DriverName {
 		err := fmt.Errorf("network is not a vxrNet")
 		return nil, err
 	}
