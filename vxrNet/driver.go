@@ -3,6 +3,7 @@ package vxrNet
 import (
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -16,6 +17,10 @@ import (
 
 	"github.com/TrilliumIT/docker-vxrouter/hostInterface"
 	"github.com/TrilliumIT/iputil"
+)
+
+const (
+	envPrefix = "VXR_"
 )
 
 // Driver is a vxrouter network driver
@@ -133,46 +138,42 @@ func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.Crea
 
 	gw, sn, _ := net.ParseCIDR(nr.Options["gateway"])
 
+	//exclude network and (normal) broadcast addresses by default
+
+	xf := getEnvIntWithDefault(envPrefix+"excludefirst", nr.Options["excludefirst"], 1)
+	xl := getEnvIntWithDefault(envPrefix+"excludelast", nr.Options["excludelast"], 1)
+
 	_, err = hostInterface.GetOrCreateHostInterface(nr.Name, &net.IPNet{IP: gw, Mask: sn.Mask}, nr.Options)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get or create host interface")
 		return nil, err
 	}
 
-	addrInSubnet, addrOnly := getAddresses(r.Interface.Address, sn)
-
-	//TODO: implement timeouts and exclusions
-
-	// keep looking for a random address until one is found
-	routes := []netlink.Route{{}}
-	for len(routes) > 0 {
-		if r.Interface.Address == "" {
-			addrOnly.IP = iputil.RandAddr(sn)
-		}
-		routes, err = netlink.RouteListFiltered(0, &netlink.Route{Dst: addrOnly}, netlink.RT_FILTER_DST)
+	var ip *net.IPNet
+	stop := time.Now().Add(d.respTime)
+	for time.Now().Before(stop) {
+		ip, err = d.selectAddress(r.Interface.Address, r.NetworkID, gw, sn, xf, xl)
 		if err != nil {
-			d.log.WithError(err).Error("failed to get routes")
+			d.log.WithError(err).Error("failed to select address")
 			return nil, err
 		}
+		if ip != nil {
+			break
+		}
+		if r.Interface.Address != "" {
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
-	addrInSubnet.IP = addrOnly.IP
 
-	// add host route to routing table
-	d.log.WithField("addronly", addrOnly.String()).Debug("adding route to")
-	err = netlink.RouteAdd(&netlink.Route{
-		Dst: addrOnly,
-		Gw:  gw,
-	})
-	if err != nil {
-		d.log.WithError(err).Error("failed to add route")
+	if ip == nil {
+		err = fmt.Errorf("timeout expired while waiting for address")
+		d.log.WithError(err).Error()
 		return nil, err
 	}
 
-	//TODO: wait prop-time and check table again
-
 	cer := &network.CreateEndpointResponse{
 		Interface: &network.EndpointInterface{
-			Address: addrInSubnet.String(),
+			Address: ip.String(),
 		},
 	}
 	return cer, nil
@@ -220,7 +221,7 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 			continue
 		}
 
-		if err := delRoute(ns.IPAddress); err != nil {
+		if err := delRoute(ns.IPAddress, gw, sn); err != nil {
 			d.log.WithError(err).Debug("failed to delete route")
 			return err
 		}
@@ -236,8 +237,8 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 	return nil
 }
 
-func delRoute(ip string) error {
-	_, addrOnly := getAddresses(ns.IPAddress, sn)
+func delRoute(ip string, gw net.IP, sn *net.IPNet) error {
+	_, addrOnly := getAddresses(ip, sn)
 
 	return netlink.RouteDel(&netlink.Route{
 		Dst: addrOnly,
@@ -360,4 +361,88 @@ func getAddresses(address string, sn *net.IPNet) (*net.IPNet, *net.IPNet) {
 	}
 
 	return sna, a
+}
+
+func (d *Driver) numRoutesTo(ipnet *net.IPNet) (int, error) {
+	routes, err := netlink.RouteListFiltered(0, &netlink.Route{Dst: ipnet}, netlink.RT_FILTER_DST)
+	if err != nil {
+		d.log.WithError(err).Error("failed to get routes")
+		return -1, err
+	}
+	return len(routes), nil
+}
+
+//Wrap calls to this function in a timer, as it has the potential to block forever
+func (d *Driver) selectAddress(reqAddress, netid string, gateway net.IP, subnet *net.IPNet, xf, xl int) (*net.IPNet, error) {
+	var err error
+
+	addrInSubnet, addrOnly := getAddresses(reqAddress, subnet)
+
+	log := d.log.WithField("ip", addrOnly.IP.String())
+
+	// keep looking for a random address until one is found
+	numRoutes := 1
+	if reqAddress == "" {
+		addrOnly.IP = iputil.RandAddrWithExclude(subnet, xf, xl)
+		addrInSubnet.IP = addrOnly.IP
+	}
+	numRoutes, err = d.numRoutesTo(addrOnly)
+	if err != nil {
+		log.WithError(err).Errorf("failed to count routes")
+		return nil, err
+	}
+	if numRoutes > 0 {
+		return nil, nil
+	}
+
+	// add host route to routing table
+	log.Debug("adding route to")
+	err = netlink.RouteAdd(&netlink.Route{
+		Dst: addrOnly,
+		Gw:  gateway,
+	})
+	if err != nil {
+		log.WithError(err).Error("failed to add route")
+		return nil, err
+	}
+
+	//wait for at least estimated route propagation time
+	time.Sleep(d.propTime)
+
+	//check that we are still the only route
+	numRoutes, err = d.numRoutesTo(addrOnly)
+	if err != nil {
+		log.WithError(err).Error("failed to count routes")
+		return nil, err
+	}
+
+	if numRoutes == 1 {
+		return addrInSubnet, nil
+	}
+
+	log.Info("someone else grabbed ip first")
+
+	err = delRoute(addrOnly.IP.String(), gateway, subnet)
+	if err != nil {
+		log.WithError(err).Error("failed to delete dup route")
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func getEnvIntWithDefault(val, opt string, def int) int {
+	e := os.Getenv(val)
+	if e == "" {
+		e = opt
+	}
+	if e == "" {
+		return def
+	}
+	ei, err := strconv.Atoi(e)
+	if err != nil {
+		log.WithField("string", e).WithError(err).Warnf("failed to convert string to int, using default")
+		return def
+	}
+	return ei
 }

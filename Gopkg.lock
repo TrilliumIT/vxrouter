@@ -17,7 +17,7 @@
   branch = "master"
   name = "github.com/TrilliumIT/iputil"
   packages = ["."]
-  revision = "377eb56ebb29f092df8f5d1d49e39958e1bec0a5"
+  revision = "25dda88f40b8d74eec5fcd28d399604d0dce0faf"
 
 [[projects]]
   name = "github.com/coreos/go-systemd"
@@ -71,7 +71,6 @@
   branch = "shutdown"
   name = "github.com/docker/go-plugins-helpers"
   packages = [
-    "ipam",
     "network",
     "sdk"
   ]
@@ -103,7 +102,7 @@
     ".",
     "nl"
   ]
-  revision = "d35d6b58e1cb692b27b94fc403170bf44058ac3e"
+  revision = "25d2c79295b361cac34eb41cfae90d5c69078b2a"
 
 [[projects]]
   branch = "master"
@@ -139,6 +138,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "aec304c456de1e1fddf2be84be2a2ac5316a326ac03195a2e9c8201ffba8ef3e"
+  inputs-digest = "375ba0e67e976774f18e05821d3d083ce7d39749b778bd8db06adf0f9dcf94c6"
   solver-name = "gps-cdcl"
   solver-version = 1
