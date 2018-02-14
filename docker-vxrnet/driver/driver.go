@@ -373,7 +373,9 @@ func (d *Driver) numRoutesTo(ipnet *net.IPNet) (int, error) {
 	return len(routes), nil
 }
 
-//Wrap calls to this function in a timer, as it has the potential to block forever
+//this function may return (nil, nil) if it selects an unavailable address
+//the intention is for the caller to continue calling in a loop until an address is returned
+//this way the caller can implement their own timeout logic
 func (d *Driver) selectAddress(reqAddress, netid string, gateway net.IP, subnet *net.IPNet, xf, xl int) (*net.IPNet, error) {
 	var err error
 
