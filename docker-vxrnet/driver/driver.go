@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	envPrefix  = "VXR_"
+	envPrefix = "VXR_"
+	// DriverName is the docker plugin name of the driver
 	DriverName = "vxrNet"
 )
 
@@ -88,7 +89,7 @@ func (d *Driver) CreateNetwork(r *network.CreateNetworkRequest) error {
 
 	vxlID, ok := opts["vxlanid"]
 	if !ok {
-		err := fmt.Errorf("cannot create a network without a vxlanid (-o vxlanid=<0-16777215>)")
+		err = fmt.Errorf("cannot create a network without a vxlanid (-o vxlanid=<0-16777215>)")
 		d.log.WithError(err).Error()
 		return err
 	}
@@ -142,7 +143,7 @@ func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.Crea
 	xf := getEnvIntWithDefault(envPrefix+"excludefirst", nr.Options["excludefirst"], 1)
 	xl := getEnvIntWithDefault(envPrefix+"excludelast", nr.Options["excludelast"], 1)
 
-	hi, err := host.GetOrCreateHostInterface(nr.Name, &net.IPNet{IP: gw, Mask: sn.Mask}, nr.Options)
+	hi, err := host.GetOrCreateInterface(nr.Name, &net.IPNet{IP: gw, Mask: sn.Mask}, nr.Options)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get or create host interface")
 		return nil, err
@@ -188,7 +189,7 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 		return err
 	}
 
-	hi, err := host.GetHostInterface(nr.Name)
+	hi, err := host.GetInterface(nr.Name)
 	if err != nil {
 		return err
 	}
@@ -223,7 +224,7 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 			d.log.WithError(err).Debug("failed to delete route")
 			return err
 		}
-		if delHi == false {
+		if !delHi {
 			break
 		}
 	}
@@ -249,7 +250,7 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 		return nil, err
 	}
 
-	hi, err := host.GetHostInterface(nr.Name)
+	hi, err := host.GetInterface(nr.Name)
 	if err != nil {
 		return nil, err
 	}

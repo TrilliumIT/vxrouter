@@ -13,19 +13,19 @@ import (
 	"github.com/TrilliumIT/vxrouter/vxlan"
 )
 
-// HostInterface holds a vxlan and a host macvlan interface used for the gateway interface on a container network
-type HostInterface struct {
+// Interface holds a vxlan and a host macvlan interface used for the gateway interface on a container network
+type Interface struct {
 	name string
 	vxl  *vxlan.Vxlan
 	mvl  *macvlan.Macvlan
 	log  *log.Entry
 }
 
-// GetOrCreateHostInterface creates required host interfaces if they don't exist, or gets them if they already do
-func GetOrCreateHostInterface(name string, gateway *net.IPNet, opts map[string]string) (*HostInterface, error) {
-	log := log.WithField("HostInterface", name)
-	log.Debug("GetOrCreateHostInterface")
-	hi, _ := getHostInterface(name)
+// GetOrCreateInterface creates required host interfaces if they don't exist, or gets them if they already do
+func GetOrCreateInterface(name string, gateway *net.IPNet, opts map[string]string) (*Interface, error) {
+	log := log.WithField("Interface", name)
+	log.Debug("GetOrCreateInterface")
+	hi, _ := getInterface(name)
 	log = hi.log
 
 	var err error
@@ -68,20 +68,20 @@ func GetOrCreateHostInterface(name string, gateway *net.IPNet, opts map[string]s
 	return hi, nil
 }
 
-// GetHostInterface gets host interfaces by name
-func GetHostInterface(name string) (*HostInterface, error) {
-	hi, err := getHostInterface(name)
+// GetInterface gets host interfaces by name
+func GetInterface(name string) (*Interface, error) {
+	hi, err := getInterface(name)
 	if err != nil {
 		return nil, err
 	}
 	return hi, err
 }
 
-func getHostInterface(name string) (*HostInterface, error) {
-	log := log.WithField("HostInterface", name)
-	log.Debug("GetHostInterface")
+func getInterface(name string) (*Interface, error) {
+	log := log.WithField("Interface", name)
+	log.Debug("GetInterface")
 
-	hi := &HostInterface{
+	hi := &Interface{
 		name: name,
 		log:  log,
 	}
@@ -102,20 +102,20 @@ func getHostInterface(name string) (*HostInterface, error) {
 }
 
 // CreateMacvlan creates container macvlan interfaces
-func (hi *HostInterface) CreateMacvlan(name string) error {
+func (hi *Interface) CreateMacvlan(name string) error {
 	hi.log.WithField("Macvlan", name).Debug("CreateMacvlan")
 	_, err := hi.vxl.CreateMacvlan(name)
 	return err
 }
 
 // DeleteMacvlan deletes a container macvlan interface
-func (hi *HostInterface) DeleteMacvlan(name string) error {
+func (hi *Interface) DeleteMacvlan(name string) error {
 	hi.log.WithField("Macvlan", name).Debug("DeleteMacvlan")
 	return hi.vxl.DeleteMacvlan(name)
 }
 
 // Delete deletes the host interface, only if there are no additional slave devices attached to the vxlan
-func (hi *HostInterface) Delete() error {
+func (hi *Interface) Delete() error {
 	hi.log.Debug("Delete")
 
 	slaves, err := hi.vxl.GetSlaveDevices()
@@ -138,16 +138,7 @@ func (hi *HostInterface) Delete() error {
 	return hi.vxl.Delete()
 }
 
-func numRoutesTo(ipnet *net.IPNet) (int, error) {
-	routes, err := netlink.RouteListFiltered(0, &netlink.Route{Dst: ipnet}, netlink.RT_FILTER_DST)
-	if err != nil {
-		log.WithError(err).Error("failed to get routes")
-		return -1, err
-	}
-	return len(routes), nil
-}
-
-func (hi *HostInterface) getConnectionInfo() (net.IP, *net.IPNet, error) {
+func (hi *Interface) getConnectionInfo() (net.IP, *net.IPNet, error) {
 	gws, err := hi.mvl.GetAddresses()
 	if err != nil {
 		return nil, nil, err
@@ -159,10 +150,11 @@ func (hi *HostInterface) getConnectionInfo() (net.IP, *net.IPNet, error) {
 	return nil, nil, fmt.Errorf("did not find any addresses on the macvlan")
 }
 
-//this function may return (nil, nil) if it selects an unavailable address
-//the intention is for the caller to continue calling in a loop until an address is returned
-//this way the caller can implement their own timeout logic
-func (hi *HostInterface) SelectAddress(reqAddress net.IP, propTime time.Duration, xf, xl int) (*net.IPNet, error) {
+// SelectAddress returns an available random IP on this network, or the requested IP
+// if it's available. This function may return (nil, nil) if it selects an unavailable address
+// the intention is for the caller to continue calling in a loop until an address is returned
+// this way the caller can implement their own timeout logic
+func (hi *Interface) SelectAddress(reqAddress net.IP, propTime time.Duration, xf, xl int) (*net.IPNet, error) {
 	gw, sn, err := hi.getConnectionInfo()
 	if err != nil {
 		return nil, err
@@ -226,24 +218,8 @@ func (hi *HostInterface) SelectAddress(reqAddress net.IP, propTime time.Duration
 	return nil, nil
 }
 
-func getIPNets(address net.IP, subnet *net.IPNet) (*net.IPNet, *net.IPNet) {
-	//address in big subnet
-	sna := &net.IPNet{
-		IP:   address,
-		Mask: subnet.Mask,
-	}
-
-	//address as host route (like /32 or /128)
-	_, ml := subnet.Mask.Size()
-	a := &net.IPNet{
-		IP:   sna.IP,
-		Mask: net.CIDRMask(ml, ml),
-	}
-
-	return sna, a
-}
-
-func (hi *HostInterface) DelRoute(ip net.IP) error {
+// DelRoute deletes the /32 or /128 to the passed address
+func (hi *Interface) DelRoute(ip net.IP) error {
 	gw, sn, err := hi.getConnectionInfo()
 	if err != nil {
 		return err
