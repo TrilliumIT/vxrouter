@@ -1,4 +1,4 @@
-package hostInterface
+package host
 
 import (
 	"fmt"

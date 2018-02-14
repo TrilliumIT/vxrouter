@@ -16,7 +16,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/TrilliumIT/iputil"
-	"github.com/TrilliumIT/vxrouter/hostInterface"
+	"github.com/TrilliumIT/vxrouter/host"
 )
 
 const (
@@ -144,7 +144,7 @@ func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.Crea
 	xf := getEnvIntWithDefault(envPrefix+"excludefirst", nr.Options["excludefirst"], 1)
 	xl := getEnvIntWithDefault(envPrefix+"excludelast", nr.Options["excludelast"], 1)
 
-	_, err = hostInterface.GetOrCreateHostInterface(nr.Name, &net.IPNet{IP: gw, Mask: sn.Mask}, nr.Options)
+	_, err = host.GetOrCreateHostInterface(nr.Name, &net.IPNet{IP: gw, Mask: sn.Mask}, nr.Options)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get or create host interface")
 		return nil, err
@@ -190,7 +190,7 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 		return err
 	}
 
-	hi, err := hostInterface.GetHostInterface(nr.Name)
+	hi, err := host.GetHostInterface(nr.Name)
 	if err != nil {
 		return err
 	}
@@ -261,7 +261,7 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 		return nil, err
 	}
 
-	hi, err := hostInterface.GetHostInterface(nr.Name)
+	hi, err := host.GetHostInterface(nr.Name)
 	if err != nil {
 		return nil, err
 	}
