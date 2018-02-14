@@ -3,9 +3,12 @@ package host
 import (
 	"fmt"
 	"net"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 
+	"github.com/TrilliumIT/iputil"
 	"github.com/TrilliumIT/vxrouter/macvlan"
 	"github.com/TrilliumIT/vxrouter/vxlan"
 )
@@ -133,4 +136,123 @@ func (hi *HostInterface) Delete() error {
 	}
 
 	return hi.vxl.Delete()
+}
+
+func numRoutesTo(ipnet *net.IPNet) (int, error) {
+	routes, err := netlink.RouteListFiltered(0, &netlink.Route{Dst: ipnet}, netlink.RT_FILTER_DST)
+	if err != nil {
+		log.WithError(err).Error("failed to get routes")
+		return -1, err
+	}
+	return len(routes), nil
+}
+
+func (hi *HostInterface) getConnectionInfo() (net.IP, *net.IPNet, error) {
+	gws, err := hi.mvl.GetAddresses()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, gw := range gws {
+		return gw.IP, &net.IPNet{IP: iputil.FirstAddr(gw), Mask: gw.Mask}, nil
+	}
+
+	return nil, nil, fmt.Errorf("did not find any addresses on the macvlan")
+}
+
+//this function may return (nil, nil) if it selects an unavailable address
+//the intention is for the caller to continue calling in a loop until an address is returned
+//this way the caller can implement their own timeout logic
+func (hi *HostInterface) SelectAddress(reqAddress net.IP, propTime time.Duration, xf, xl int) (*net.IPNet, error) {
+	gw, sn, err := hi.getConnectionInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	addrInSubnet, addrOnly := getIPNets(reqAddress, sn)
+	log := hi.log.WithField("ip", addrOnly.IP.String())
+
+	if reqAddress != nil && !sn.Contains(reqAddress) {
+		return nil, fmt.Errorf("requested address was not in this host interface's subnet")
+	}
+
+	// keep looking for a random address until one is found
+	numRoutes := 1
+	if reqAddress == nil {
+		addrOnly.IP = iputil.RandAddrWithExclude(sn, xf, xl)
+		addrInSubnet.IP = addrOnly.IP
+	}
+	numRoutes, err = numRoutesTo(addrOnly)
+	if err != nil {
+		log.WithError(err).Errorf("failed to count routes")
+		return nil, err
+	}
+	if numRoutes > 0 {
+		return nil, nil
+	}
+
+	// add host route to routing table
+	log.Debug("adding route to")
+	err = netlink.RouteAdd(&netlink.Route{
+		Dst: addrOnly,
+		Gw:  gw,
+	})
+	if err != nil {
+		log.WithError(err).Error("failed to add route")
+		return nil, err
+	}
+
+	//wait for at least estimated route propagation time
+	time.Sleep(propTime)
+
+	//check that we are still the only route
+	numRoutes, err = numRoutesTo(addrOnly)
+	if err != nil {
+		log.WithError(err).Error("failed to count routes")
+		return nil, err
+	}
+
+	if numRoutes == 1 {
+		return addrInSubnet, nil
+	}
+
+	log.Info("someone else grabbed ip first")
+
+	err = hi.DelRoute(addrOnly.IP)
+	if err != nil {
+		log.WithError(err).Error("failed to delete dup route")
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func getIPNets(address net.IP, subnet *net.IPNet) (*net.IPNet, *net.IPNet) {
+	//address in big subnet
+	sna := &net.IPNet{
+		IP:   address,
+		Mask: subnet.Mask,
+	}
+
+	//address as host route (like /32 or /128)
+	_, ml := subnet.Mask.Size()
+	a := &net.IPNet{
+		IP:   sna.IP,
+		Mask: net.CIDRMask(ml, ml),
+	}
+
+	return sna, a
+}
+
+func (hi *HostInterface) DelRoute(ip net.IP) error {
+	gw, sn, err := hi.getConnectionInfo()
+	if err != nil {
+		return err
+	}
+
+	_, addrOnly := getIPNets(ip, sn)
+
+	return netlink.RouteDel(&netlink.Route{
+		Dst: addrOnly,
+		Gw:  gw,
+	})
 }

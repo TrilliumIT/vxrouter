@@ -7,6 +7,8 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/net/context"
+
+	"github.com/TrilliumIT/vxrouter/host"
 )
 
 func (d *Driver) reconcile() error {
@@ -67,7 +69,8 @@ func (d *Driver) reconcile() error {
 					return err
 				}
 
-				_, addrOnly := getAddresses(nr.IPAMConfig.IPv4Address, subnet)
+				//hi, _ := host.GetOrCreateHostInterface(nets[n].Name)
+				//_, addrOnly := hi.getAddresses(nr.IPAMConfig.IPv4Address, subnet)
 
 				if !subnet.Contains(addrOnly.IP) { // maybe this is the wrong ipam.config, idk
 					continue

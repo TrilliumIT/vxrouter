@@ -17,7 +17,7 @@
   branch = "master"
   name = "github.com/TrilliumIT/iputil"
   packages = ["."]
-  revision = "25dda88f40b8d74eec5fcd28d399604d0dce0faf"
+  revision = "f92091035398c01d9edf7871ad5695e53ffb4d8b"
 
 [[projects]]
   name = "github.com/coreos/go-systemd"
@@ -114,7 +114,7 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
-  revision = "9de5f2eaf759b4c4550b3db39fed2e9e5f86f45c"
+  revision = "650f4a345ab4e5b245a3034b110ebc7299e68186"
 
 [[projects]]
   branch = "master"

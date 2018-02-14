@@ -12,10 +12,8 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/network"
-	"github.com/vishvananda/netlink"
 	"golang.org/x/net/context"
 
-	"github.com/TrilliumIT/iputil"
 	"github.com/TrilliumIT/vxrouter/host"
 )
 
@@ -144,7 +142,7 @@ func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.Crea
 	xf := getEnvIntWithDefault(envPrefix+"excludefirst", nr.Options["excludefirst"], 1)
 	xl := getEnvIntWithDefault(envPrefix+"excludelast", nr.Options["excludelast"], 1)
 
-	_, err = host.GetOrCreateHostInterface(nr.Name, &net.IPNet{IP: gw, Mask: sn.Mask}, nr.Options)
+	hi, err := host.GetOrCreateHostInterface(nr.Name, &net.IPNet{IP: gw, Mask: sn.Mask}, nr.Options)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get or create host interface")
 		return nil, err
@@ -153,7 +151,7 @@ func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.Crea
 	var ip *net.IPNet
 	stop := time.Now().Add(d.respTime)
 	for time.Now().Before(stop) {
-		ip, err = d.selectAddress(r.Interface.Address, r.NetworkID, gw, sn, xf, xl)
+		ip, err = hi.SelectAddress(net.ParseIP(r.Interface.Address), d.propTime, xf, xl)
 		if err != nil {
 			d.log.WithError(err).Error("failed to select address")
 			return nil, err
@@ -208,7 +206,6 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 		return err
 	}
 
-	gw, sn, _ := net.ParseCIDR(nr.Options["gateway"])
 	delHi := true
 	for _, c := range containers {
 		ns, ok := c.NetworkSettings.Networks[nr.Name]
@@ -222,7 +219,7 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 			continue
 		}
 
-		if err := delRoute(ns.IPAddress, gw, sn); err != nil {
+		if err := hi.DelRoute(net.ParseIP(ns.IPAddress)); err != nil {
 			d.log.WithError(err).Debug("failed to delete route")
 			return err
 		}
@@ -236,15 +233,6 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 	}
 
 	return nil
-}
-
-func delRoute(ip string, gw net.IP, sn *net.IPNet) error {
-	_, addrOnly := getAddresses(ip, sn)
-
-	return netlink.RouteDel(&netlink.Route{
-		Dst: addrOnly,
-		Gw:  gw,
-	})
 }
 
 // EndpointInfo is called on inspect... maybe?
@@ -274,6 +262,10 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 	}
 
 	gw, _, err := net.ParseCIDR(nr.Options["gateway"])
+	if err != nil {
+		d.log.WithError(err).Error("failed to parse gateway option")
+		return nil, err
+	}
 
 	jr := &network.JoinResponse{
 		InterfaceName: network.InterfaceName{
@@ -347,91 +339,6 @@ func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
 	d.nrCache[id] = &nr
 
 	return &nr, nil
-}
-
-func getAddresses(address string, sn *net.IPNet) (*net.IPNet, *net.IPNet) {
-	sna := &net.IPNet{
-		IP:   net.ParseIP(address),
-		Mask: sn.Mask,
-	}
-
-	_, ml := sn.Mask.Size()
-	a := &net.IPNet{
-		IP:   sna.IP,
-		Mask: net.CIDRMask(ml, ml),
-	}
-
-	return sna, a
-}
-
-func (d *Driver) numRoutesTo(ipnet *net.IPNet) (int, error) {
-	routes, err := netlink.RouteListFiltered(0, &netlink.Route{Dst: ipnet}, netlink.RT_FILTER_DST)
-	if err != nil {
-		d.log.WithError(err).Error("failed to get routes")
-		return -1, err
-	}
-	return len(routes), nil
-}
-
-//this function may return (nil, nil) if it selects an unavailable address
-//the intention is for the caller to continue calling in a loop until an address is returned
-//this way the caller can implement their own timeout logic
-func (d *Driver) selectAddress(reqAddress, netid string, gateway net.IP, subnet *net.IPNet, xf, xl int) (*net.IPNet, error) {
-	var err error
-
-	addrInSubnet, addrOnly := getAddresses(reqAddress, subnet)
-
-	log := d.log.WithField("ip", addrOnly.IP.String())
-
-	// keep looking for a random address until one is found
-	numRoutes := 1
-	if reqAddress == "" {
-		addrOnly.IP = iputil.RandAddrWithExclude(subnet, xf, xl)
-		addrInSubnet.IP = addrOnly.IP
-	}
-	numRoutes, err = d.numRoutesTo(addrOnly)
-	if err != nil {
-		log.WithError(err).Errorf("failed to count routes")
-		return nil, err
-	}
-	if numRoutes > 0 {
-		return nil, nil
-	}
-
-	// add host route to routing table
-	log.Debug("adding route to")
-	err = netlink.RouteAdd(&netlink.Route{
-		Dst: addrOnly,
-		Gw:  gateway,
-	})
-	if err != nil {
-		log.WithError(err).Error("failed to add route")
-		return nil, err
-	}
-
-	//wait for at least estimated route propagation time
-	time.Sleep(d.propTime)
-
-	//check that we are still the only route
-	numRoutes, err = d.numRoutesTo(addrOnly)
-	if err != nil {
-		log.WithError(err).Error("failed to count routes")
-		return nil, err
-	}
-
-	if numRoutes == 1 {
-		return addrInSubnet, nil
-	}
-
-	log.Info("someone else grabbed ip first")
-
-	err = delRoute(addrOnly.IP.String(), gateway, subnet)
-	if err != nil {
-		log.WithError(err).Error("failed to delete dup route")
-		return nil, err
-	}
-
-	return nil, nil
 }
 
 func getEnvIntWithDefault(val, opt string, def int) int {
