@@ -10,7 +10,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 
-	"github.com/TrilliumIT/docker-vxrouter/macvlan"
+	"github.com/TrilliumIT/vxrouter/macvlan"
 )
 
 const (

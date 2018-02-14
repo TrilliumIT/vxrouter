@@ -1,3 +1,2 @@
 vendor
-docker-vxrouter
-vendor
+docker-vxrnet/docker-vxrnet

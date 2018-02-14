@@ -14,7 +14,7 @@ import (
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/urfave/cli"
 
-	"github.com/TrilliumIT/docker-vxrouter/vxrNet"
+	"github.com/TrilliumIT/vxrouter/docker-vxrnet/driver"
 )
 
 const (
@@ -24,7 +24,7 @@ const (
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "docker-vxrouter"
+	app.Name = "docker-" + driver.DriverName
 	app.Usage = "Docker vxLan Networking"
 	app.Version = version
 
@@ -81,33 +81,33 @@ func Run(ctx *cli.Context) {
 		log.WithError(err).Fatal("failed to create docker client")
 	}
 
-	nd, err := vxrNet.NewDriver(ns, pt, rt, dc)
+	nd, err := driver.NewDriver(ns, pt, rt, dc)
 	if err != nil {
-		log.WithError(err).Fatal("failed to create vxrNet driver")
+		log.WithError(err).Fatalf("failed to create %v driver", driver.DriverName)
 	}
 	cerr := make(chan error)
 
 	nh := network.NewHandler(nd)
-	go func() { cerr <- nh.ServeUnix("vxrNet", 0) }()
+	go func() { cerr <- nh.ServeUnix(driver.DriverName, 0) }()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	select {
 	case err = <-cerr:
-		log.WithError(err).Error("error from vxrNet driver")
+		log.WithError(err).Errorf("error from %v driver", driver.DriverName)
 		close(cerr)
 	case <-c:
 	}
 
 	err = nh.Shutdown(context.Background())
 	if err != nil {
-		log.WithError(err).Error("Error shutting down vxrNet driver")
+		log.WithError(err).Errorf("Error shutting down %v driver", driver.DriverName)
 	}
 
 	err = <-cerr
 	if err != nil && err != http.ErrServerClosed {
-		log.WithError(err).Error("error from vxrNet driver")
+		log.WithError(err).Errorf("error from %v driver", driver.DriverName)
 	}
 
 	fmt.Println()

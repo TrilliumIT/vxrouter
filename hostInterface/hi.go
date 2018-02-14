@@ -6,8 +6,8 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	"github.com/TrilliumIT/docker-vxrouter/macvlan"
-	"github.com/TrilliumIT/docker-vxrouter/vxlan"
+	"github.com/TrilliumIT/vxrouter/macvlan"
+	"github.com/TrilliumIT/vxrouter/vxlan"
 )
 
 // HostInterface holds a vxlan and a host macvlan interface used for the gateway interface on a container network

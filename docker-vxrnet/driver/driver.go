@@ -1,4 +1,4 @@
-package vxrNet
+package driver
 
 import (
 	"fmt"
@@ -15,8 +15,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/net/context"
 
-	"github.com/TrilliumIT/docker-vxrouter/hostInterface"
 	"github.com/TrilliumIT/iputil"
+	"github.com/TrilliumIT/vxrouter/hostInterface"
 )
 
 const (
@@ -340,7 +340,7 @@ func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
 	}
 
 	if nr.Driver != DriverName {
-		err := fmt.Errorf("network is not a vxrNet")
+		err := fmt.Errorf("network is not a %v", DriverName)
 		return nil, err
 	}
 
