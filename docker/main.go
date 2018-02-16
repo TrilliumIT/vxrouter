@@ -85,31 +85,53 @@ func Run(ctx *cli.Context) {
 
 	nd, err := network.NewDriver(ns, pt, rt, dc)
 	if err != nil {
-		log.WithError(err).Fatalf("failed to create %v driver", network.DriverName)
+		log.WithField("driver", network.DriverName).WithError(err).Fatal("failed to create driver")
 	}
-	cerr := make(chan error)
+	ncerr := make(chan error)
+
+	id, err := ipam.NewDriver()
+	if err != nil {
+		log.WithField("driver", ipam.DriverName).WithError(err).Fatal("failed to create driver")
+	}
+	icerr := make(chan error)
 
 	nh := gphnet.NewHandler(nd)
-	go func() { cerr <- nh.ServeUnix(network.DriverName, 0) }()
+	go func() { ncerr <- nh.ServeUnix(network.DriverName, 0) }()
+
+	ih := gphipam.NewHandler(id)
+	go func() { icerr <- ih.ServeUnix(ipam.DriverName, 0) }()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	select {
-	case err = <-cerr:
-		log.WithError(err).Errorf("error from %v driver", network.DriverName)
-		close(cerr)
+	case err = <-ncerr:
+		log.WithField("driver", network.DriverName).WithError(err).Error()
+		close(ncerr)
+	case err = <-icerr:
+		log.WithField("driver", network.DriverName).WithError(err).Error()
+		close(icerr)
 	case <-c:
 	}
 
 	err = nh.Shutdown(context.Background())
 	if err != nil {
-		log.WithError(err).Errorf("Error shutting down %v driver", network.DriverName)
+		log.WithField("driver", network.DriverName).WithError(err).Error("error shutting down driver")
 	}
 
-	err = <-cerr
+	err = ih.Shutdown(context.Background())
+	if err != nil {
+		log.WithField("driver", ipam.DriverName).WithError(err).Error("error shutting down driver")
+	}
+
+	err = <-ncerr
 	if err != nil && err != http.ErrServerClosed {
-		log.WithError(err).Errorf("error from %v driver", network.DriverName)
+		log.WithField("driver", network.DriverName).WithError(err).Error()
+	}
+
+	err = <-icerr
+	if err != nil && err != http.ErrServerClosed {
+		log.WithField("driver", ipam.DriverName).WithError(err).Error()
 	}
 
 	fmt.Println()

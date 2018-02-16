@@ -12,6 +12,10 @@ const (
 
 type Driver struct{}
 
+func NewDriver() (*Driver, error) {
+	return &Driver{}, nil
+}
+
 func (d *Driver) GetCapabilities() (*gphipam.CapabilitiesResponse, error) {
 	return &gphipam.CapabilitiesResponse{}, nil
 }

@@ -65,6 +65,12 @@ func (d *Driver) CreateNetwork(r *gphnet.CreateNetworkRequest) error {
 	//Even though we are stateless
 	//Validate required options on create to notify the user
 
+	_, err := d.getGateway(r.NetworkID)
+	if err != nil {
+		log.WithError(err).Error("please specify --gateway and --subnet options")
+		return err
+	}
+
 	opts, ok := r.Options["com.docker.network.generic"].(map[string]interface{})
 	if !ok {
 		err := fmt.Errorf("did not retrieve the options array for the network")
@@ -72,24 +78,9 @@ func (d *Driver) CreateNetwork(r *gphnet.CreateNetworkRequest) error {
 		return err
 	}
 
-	//make sure gateway option was specified
-	gw, ok := opts["gateway"]
-	if !ok {
-		err := fmt.Errorf("cannot create a network without a CIDR gateway (-o gateway=<address>/<mask>)")
-		d.log.WithError(err).Error()
-		return err
-	}
-
-	//make sure gateway option is a CIDR
-	_, _, err := net.ParseCIDR(gw.(string))
-	if err != nil {
-		d.log.WithError(err).WithField("gw", gw).Error("failed to parse gateway")
-		return err
-	}
-
 	vxlID, ok := opts["vxlanid"]
 	if !ok {
-		err = fmt.Errorf("cannot create a network without a vxlanid (-o vxlanid=<0-16777215>)")
+		err := fmt.Errorf("cannot create a network without a vxlanid (-o vxlanid=<0-16777215>)")
 		d.log.WithError(err).Error()
 		return err
 	}
@@ -100,8 +91,8 @@ func (d *Driver) CreateNetwork(r *gphnet.CreateNetworkRequest) error {
 		return err
 	}
 	if vid < 0 || vid > 16777215 {
-		err := fmt.Errorf("vxlanid (%v) is out of range", vid)
-		d.log.WithError(err).Error()
+		err = fmt.Errorf("vxlanid is out of range")
+		d.log.WithField("vxlanid", vid).WithError(err).Error()
 		return err
 	}
 
@@ -136,14 +127,18 @@ func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.Create
 		return nil, err
 	}
 
-	gw, sn, _ := net.ParseCIDR(nr.Options["gateway"])
+	gw, err := d.getGateway(r.NetworkID)
+	if err != nil {
+		d.log.WithError(err).Error("failed to get gateway")
+		return nil, err
+	}
 
 	//exclude network and (normal) broadcast addresses by default
 
 	xf := getEnvIntWithDefault(envPrefix+"excludefirst", nr.Options["excludefirst"], 1)
 	xl := getEnvIntWithDefault(envPrefix+"excludelast", nr.Options["excludelast"], 1)
 
-	hi, err := host.GetOrCreateInterface(nr.Name, &net.IPNet{IP: gw, Mask: sn.Mask}, nr.Options)
+	hi, err := host.GetOrCreateInterface(nr.Name, gw, nr.Options)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get or create host interface")
 		return nil, err
@@ -262,9 +257,9 @@ func (d *Driver) Join(r *gphnet.JoinRequest) (*gphnet.JoinResponse, error) {
 		return nil, err
 	}
 
-	gw, _, err := net.ParseCIDR(nr.Options["gateway"])
+	gw, err := d.getGateway(r.NetworkID)
 	if err != nil {
-		d.log.WithError(err).Error("failed to parse gateway option")
+		d.log.WithError(err).Error("failed to get gateway")
 		return nil, err
 	}
 
@@ -273,7 +268,7 @@ func (d *Driver) Join(r *gphnet.JoinRequest) (*gphnet.JoinResponse, error) {
 			SrcName:   mvlName,
 			DstPrefix: "eth",
 		},
-		Gateway: gw.String(),
+		Gateway: gw.IP.String(),
 	}
 
 	return jr, nil
@@ -356,4 +351,29 @@ func getEnvIntWithDefault(val, opt string, def int) int {
 		return def
 	}
 	return ei
+}
+
+//loop over the IPAMConfig array, combine gw and sn into a cidr
+func (d *Driver) getGateway(networkid string) (*net.IPNet, error) {
+	nr, err := d.getNetworkResource(networkid)
+	if err != nil {
+		d.log.WithError(err).WithField("NetworkID", networkid).Error("failed to get network resource")
+		return nil, err
+	}
+
+	for _, ic := range nr.IPAM.Config {
+		gws := ic.Gateway
+		sns := ic.Subnet
+		if gws != "" && sns != "" {
+			gw := net.ParseIP(gws)
+			if gw == nil {
+				err := fmt.Errorf("failed to parse gateway from ipam config")
+				return nil, err
+			}
+			_, sn, err := net.ParseCIDR(sns)
+			return &net.IPNet{IP: gw, Mask: sn.Mask}, err
+		}
+	}
+
+	return nil, fmt.Errorf("no gateway with subnet found in ipam config")
 }
