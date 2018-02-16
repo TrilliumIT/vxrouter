@@ -2,6 +2,8 @@ package ipam
 
 import (
 	"fmt"
+	"net"
+	"strings"
 
 	gphipam "github.com/docker/go-plugins-helpers/ipam"
 )
@@ -50,7 +52,16 @@ func (d *Driver) ReleasePool(r *gphipam.ReleasePoolRequest) error {
 
 // RequestAddress does nothing
 func (d *Driver) RequestAddress(r *gphipam.RequestAddressRequest) (*gphipam.RequestAddressResponse, error) {
-	return &gphipam.RequestAddressResponse{}, nil
+	rar := &gphipam.RequestAddressResponse{}
+	if r.Address != "" {
+		_, sn, err := net.ParseCIDR(strings.TrimPrefix(r.PoolID, DriverName+"_"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse subnet")
+		}
+		gwn := &net.IPNet{IP: net.ParseIP(r.Address), Mask: sn.Mask}
+		rar.Address = gwn.String()
+	}
+	return rar, nil
 }
 
 // ReleaseAddress does nothing
