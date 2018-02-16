@@ -35,19 +35,19 @@ func main() {
 			EnvVar: envPrefix + "DEBUG_LOGGING",
 		},
 		cli.StringFlag{
-			Name:   "network-scope, ns",
+			Name:   "scope, s",
 			Value:  "local",
 			Usage:  "Scope of the network. local or global.",
 			EnvVar: envPrefix + "NETWORK-SCOPE",
 		},
 		cli.DurationFlag{
-			Name:   "ipam-prop-timeout, pt",
+			Name:   "prop-timeout, pt",
 			Value:  100 * time.Millisecond,
 			Usage:  "How long to wait for external route propagation",
 			EnvVar: envPrefix + "IPAM-PROP-TIMEOUT",
 		},
 		cli.DurationFlag{
-			Name:   "ipam-resp-timeout, rt",
+			Name:   "resp-timeout, rt",
 			Value:  10 * time.Second,
 			Usage:  "Maximum allowed response milliseconds, to prevent hanging docker daemon",
 			EnvVar: envPrefix + "IPAM-RESP-TIMEOUT",
