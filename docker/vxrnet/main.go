@@ -74,9 +74,9 @@ func Run(ctx *cli.Context) {
 		FullTimestamp:    true,
 	})
 
-	ns := ctx.String("ns")
-	pt := ctx.Duration("pt")
-	rt := ctx.Duration("rt")
+	ns := ctx.String("scope")
+	pt := ctx.Duration("prop-timeout")
+	rt := ctx.Duration("resp-timeout")
 
 	dc, err := client.NewEnvClient()
 	if err != nil {
