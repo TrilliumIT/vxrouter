@@ -122,12 +122,17 @@ func (m *Macvlan) GetAddresses() ([]*net.IPNet, error) {
 
 // HasAddress returns true if addr is bound to the Macvlan interface
 func (m *Macvlan) HasAddress(addr *net.IPNet) bool {
-	addrs, _ := m.GetAddresses()
+	addrs, err := m.GetAddresses()
+	if err != nil {
+		log.WithError(err).Warn("err getting macvlan addresses")
+	}
+
 	for _, a := range addrs {
 		if a.IP.Equal(addr.IP) && a.Mask.String() == addr.Mask.String() {
 			return true
 		}
 	}
+
 	return false
 }
 
