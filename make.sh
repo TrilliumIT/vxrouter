@@ -4,4 +4,4 @@ echo "Linting..."
 gometalinter --skip=vendor --disable=gocyclo ./...
 
 echo "Building..."
-go build -o vxrnet ./docker
+mkdir bin || go build -o bin/vxrnet ./docker/vxrnet
