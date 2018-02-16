@@ -1,4 +1,4 @@
-package driver
+package network
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
-	"github.com/docker/go-plugins-helpers/network"
+	gphnet "github.com/docker/go-plugins-helpers/network"
 	"golang.org/x/net/context"
 
 	"github.com/TrilliumIT/vxrouter/host"
@@ -49,9 +49,9 @@ func NewDriver(scope string, propTime, respTime time.Duration, client *client.Cl
 }
 
 // GetCapabilities is called on driver initialization
-func (d *Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
+func (d *Driver) GetCapabilities() (*gphnet.CapabilitiesResponse, error) {
 	d.log.Debug("GetCapabilities()")
-	cap := &network.CapabilitiesResponse{
+	cap := &gphnet.CapabilitiesResponse{
 		Scope:             d.scope,
 		ConnectivityScope: "",
 	}
@@ -59,7 +59,7 @@ func (d *Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
 }
 
 // CreateNetwork is called on docker network create
-func (d *Driver) CreateNetwork(r *network.CreateNetworkRequest) error {
+func (d *Driver) CreateNetwork(r *gphnet.CreateNetworkRequest) error {
 	d.log.WithField("r", r).Debug("CreateNetwork()")
 
 	//Even though we are stateless
@@ -109,25 +109,25 @@ func (d *Driver) CreateNetwork(r *network.CreateNetworkRequest) error {
 }
 
 // AllocateNetwork is never called
-func (d *Driver) AllocateNetwork(r *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
+func (d *Driver) AllocateNetwork(r *gphnet.AllocateNetworkRequest) (*gphnet.AllocateNetworkResponse, error) {
 	d.log.WithField("r", r).Debug("AllocateNetwork()")
-	return &network.AllocateNetworkResponse{}, nil
+	return &gphnet.AllocateNetworkResponse{}, nil
 }
 
 // DeleteNetwork is called on docker network rm
-func (d *Driver) DeleteNetwork(r *network.DeleteNetworkRequest) error {
+func (d *Driver) DeleteNetwork(r *gphnet.DeleteNetworkRequest) error {
 	d.log.WithField("r", r).Debug("DeleteNetwork()")
 	return nil
 }
 
 // FreeNetwork is never called
-func (d *Driver) FreeNetwork(r *network.FreeNetworkRequest) error {
+func (d *Driver) FreeNetwork(r *gphnet.FreeNetworkRequest) error {
 	d.log.WithField("r", r).Debug("FreeNetwork()")
 	return nil
 }
 
 // CreateEndpoint is called after IPAM has assigned an address, before Join is called
-func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
+func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.CreateEndpointResponse, error) {
 	d.log.WithField("r", r).Debug("CreateEndpoint()")
 
 	nr, err := d.getNetworkResource(r.NetworkID)
@@ -171,8 +171,8 @@ func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.Crea
 		return nil, err
 	}
 
-	cer := &network.CreateEndpointResponse{
-		Interface: &network.EndpointInterface{
+	cer := &gphnet.CreateEndpointResponse{
+		Interface: &gphnet.EndpointInterface{
 			Address: ip.String(),
 		},
 	}
@@ -180,7 +180,7 @@ func (d *Driver) CreateEndpoint(r *network.CreateEndpointRequest) (*network.Crea
 }
 
 // DeleteEndpoint is called after Leave
-func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
+func (d *Driver) DeleteEndpoint(r *gphnet.DeleteEndpointRequest) error {
 	d.log.WithField("r", r).Debug("DeleteEndpoint()")
 
 	nr, err := d.getNetworkResource(r.NetworkID)
@@ -237,13 +237,13 @@ func (d *Driver) DeleteEndpoint(r *network.DeleteEndpointRequest) error {
 }
 
 // EndpointInfo is called on inspect... maybe?
-func (d *Driver) EndpointInfo(r *network.InfoRequest) (*network.InfoResponse, error) {
+func (d *Driver) EndpointInfo(r *gphnet.InfoRequest) (*gphnet.InfoResponse, error) {
 	d.log.WithField("r", r).Debug("EndpointInfo()")
-	return &network.InfoResponse{}, nil
+	return &gphnet.InfoResponse{}, nil
 }
 
 // Join is the last thing called before the nic is put into the container namespace
-func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
+func (d *Driver) Join(r *gphnet.JoinRequest) (*gphnet.JoinResponse, error) {
 	nr, err := d.getNetworkResource(r.NetworkID)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
@@ -268,8 +268,8 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 		return nil, err
 	}
 
-	jr := &network.JoinResponse{
-		InterfaceName: network.InterfaceName{
+	jr := &gphnet.JoinResponse{
+		InterfaceName: gphnet.InterfaceName{
 			SrcName:   mvlName,
 			DstPrefix: "eth",
 		},
@@ -280,31 +280,31 @@ func (d *Driver) Join(r *network.JoinRequest) (*network.JoinResponse, error) {
 }
 
 // Leave is the first thing called on container stop
-func (d *Driver) Leave(r *network.LeaveRequest) error {
+func (d *Driver) Leave(r *gphnet.LeaveRequest) error {
 	d.log.WithField("r", r).Debug("Leave()")
 	return nil
 }
 
 // DiscoverNew is not implemented by this driver
-func (d *Driver) DiscoverNew(r *network.DiscoveryNotification) error {
+func (d *Driver) DiscoverNew(r *gphnet.DiscoveryNotification) error {
 	d.log.WithField("r", r).Debug("DiscoverNew()")
 	return nil
 }
 
 // DiscoverDelete is not implemented by this driver
-func (d *Driver) DiscoverDelete(r *network.DiscoveryNotification) error {
+func (d *Driver) DiscoverDelete(r *gphnet.DiscoveryNotification) error {
 	d.log.WithField("r", r).Debug("DiscoverDelete()")
 	return nil
 }
 
 // ProgramExternalConnectivity is not implemented by this driver
-func (d *Driver) ProgramExternalConnectivity(r *network.ProgramExternalConnectivityRequest) error {
+func (d *Driver) ProgramExternalConnectivity(r *gphnet.ProgramExternalConnectivityRequest) error {
 	d.log.WithField("r", r).Debug("ProgramExternalConnectivity()")
 	return nil
 }
 
 // RevokeExternalConnectivity is not implemented by this driver
-func (d *Driver) RevokeExternalConnectivity(r *network.RevokeExternalConnectivityRequest) error {
+func (d *Driver) RevokeExternalConnectivity(r *gphnet.RevokeExternalConnectivityRequest) error {
 	d.log.WithField("r", r).Debug("RevokeExternalConnectivity()")
 
 	return nil

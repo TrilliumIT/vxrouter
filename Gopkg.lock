@@ -71,6 +71,7 @@
   branch = "shutdown"
   name = "github.com/docker/go-plugins-helpers"
   packages = [
+    "ipam",
     "network",
     "sdk"
   ]
@@ -124,7 +125,7 @@
     "context/ctxhttp",
     "proxy"
   ]
-  revision = "f5dfe339be1d06f81b22525fe34671ee7d2c8904"
+  revision = "2e7f24ace30034db6c258ddb329e5236a68c27fa"
 
 [[projects]]
   branch = "master"
@@ -138,6 +139,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "375ba0e67e976774f18e05821d3d083ce7d39749b778bd8db06adf0f9dcf94c6"
+  inputs-digest = "305b1a44192fdb4414649bb9ffae0431243ff2064dbc7b73818a0094a7cd5b17"
   solver-name = "gps-cdcl"
   solver-version = 1

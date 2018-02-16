@@ -11,10 +11,12 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/client"
-	"github.com/docker/go-plugins-helpers/network"
+	gphipam "github.com/docker/go-plugins-helpers/ipam"
+	gphnet "github.com/docker/go-plugins-helpers/network"
 	"github.com/urfave/cli"
 
-	"github.com/TrilliumIT/vxrouter/docker-vxrnet/driver"
+	"github.com/TrilliumIT/vxrouter/docker/ipam"
+	"github.com/TrilliumIT/vxrouter/docker/network"
 )
 
 const (
@@ -24,7 +26,7 @@ const (
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "docker-" + driver.DriverName
+	app.Name = "docker-" + network.DriverName
 	app.Usage = "Docker vxLan Networking"
 	app.Version = version
 
@@ -81,33 +83,33 @@ func Run(ctx *cli.Context) {
 		log.WithError(err).Fatal("failed to create docker client")
 	}
 
-	nd, err := driver.NewDriver(ns, pt, rt, dc)
+	nd, err := network.NewDriver(ns, pt, rt, dc)
 	if err != nil {
-		log.WithError(err).Fatalf("failed to create %v driver", driver.DriverName)
+		log.WithError(err).Fatalf("failed to create %v driver", network.DriverName)
 	}
 	cerr := make(chan error)
 
-	nh := network.NewHandler(nd)
-	go func() { cerr <- nh.ServeUnix(driver.DriverName, 0) }()
+	nh := gphnet.NewHandler(nd)
+	go func() { cerr <- nh.ServeUnix(network.DriverName, 0) }()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	select {
 	case err = <-cerr:
-		log.WithError(err).Errorf("error from %v driver", driver.DriverName)
+		log.WithError(err).Errorf("error from %v driver", network.DriverName)
 		close(cerr)
 	case <-c:
 	}
 
 	err = nh.Shutdown(context.Background())
 	if err != nil {
-		log.WithError(err).Errorf("Error shutting down %v driver", driver.DriverName)
+		log.WithError(err).Errorf("Error shutting down %v driver", network.DriverName)
 	}
 
 	err = <-cerr
 	if err != nil && err != http.ErrServerClosed {
-		log.WithError(err).Errorf("error from %v driver", driver.DriverName)
+		log.WithError(err).Errorf("error from %v driver", network.DriverName)
 	}
 
 	fmt.Println()

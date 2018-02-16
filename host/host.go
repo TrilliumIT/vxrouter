@@ -168,12 +168,11 @@ func (hi *Interface) SelectAddress(reqAddress net.IP, propTime time.Duration, xf
 	}
 
 	// keep looking for a random address until one is found
-	numRoutes := 1
 	if reqAddress == nil {
 		addrOnly.IP = iputil.RandAddrWithExclude(sn, xf, xl)
 		addrInSubnet.IP = addrOnly.IP
 	}
-	numRoutes, err = numRoutesTo(addrOnly)
+	numRoutes, err := numRoutesTo(addrOnly)
 	if err != nil {
 		log.WithError(err).Errorf("failed to count routes")
 		return nil, err
