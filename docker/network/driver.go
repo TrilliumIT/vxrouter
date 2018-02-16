@@ -149,10 +149,11 @@ func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.Create
 		return nil, err
 	}
 
+	rip, _, _ := net.ParseCIDR(r.Interface.Address) //nolint errcheck
 	var ip *net.IPNet
 	stop := time.Now().Add(d.respTime)
 	for time.Now().Before(stop) {
-		ip, err = hi.SelectAddress(net.ParseIP(r.Interface.Address), d.propTime, xf, xl)
+		ip, err = hi.SelectAddress(rip, d.propTime, xf, xl)
 		if err != nil {
 			d.log.WithError(err).Error("failed to select address")
 			return nil, err
@@ -160,7 +161,7 @@ func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.Create
 		if ip != nil {
 			break
 		}
-		if r.Interface.Address != "" {
+		if rip != nil {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
