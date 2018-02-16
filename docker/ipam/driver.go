@@ -60,8 +60,9 @@ func (d *Driver) RequestAddress(r *gphipam.RequestAddressRequest) (*gphipam.Requ
 		}
 		gwn := &net.IPNet{IP: net.ParseIP(r.Address), Mask: sn.Mask}
 		rar.Address = gwn.String()
+		return rar, nil
 	}
-	return rar, nil
+	return nil, nil
 }
 
 // ReleaseAddress does nothing

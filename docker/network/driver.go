@@ -172,6 +172,10 @@ func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.Create
 		return nil, err
 	}
 
+	if rip != nil {
+		return nil, nil
+	}
+
 	cer := &gphnet.CreateEndpointResponse{
 		Interface: &gphnet.EndpointInterface{
 			Address: ip.String(),
