@@ -62,19 +62,24 @@ func (d *Driver) GetCapabilities() (*gphnet.CapabilitiesResponse, error) {
 func (d *Driver) CreateNetwork(r *gphnet.CreateNetworkRequest) error {
 	d.log.WithField("r", r).Debug("CreateNetwork()")
 
-	//Even though we are stateless
-	//Validate required options on create to notify the user
+	hasGW := false
+	for _, v4 := range append(r.IPv4Data, r.IPv6Data...) {
+		if v4.Gateway != "" {
+			hasGW = true
+			break
+		}
+	}
 
-	_, err := d.getGateway(r.NetworkID)
-	if err != nil {
-		log.WithError(err).Error("please specify --gateway and --subnet options")
+	if !hasGW {
+		err := fmt.Errorf("gateway not found in IPAMData")
+		d.log.WithError(err).Error()
 		return err
 	}
 
 	opts, ok := r.Options["com.docker.network.generic"].(map[string]interface{})
 	if !ok {
 		err := fmt.Errorf("did not retrieve the options array for the network")
-		log.WithError(err).Error()
+		d.log.WithError(err).Error()
 		return err
 	}
 
