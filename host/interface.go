@@ -155,7 +155,7 @@ func (hi *Interface) getConnectionInfo() (net.IP, *net.IPNet, error) {
 // the intention is for the caller to continue calling in a loop until an address is returned
 // this way the caller can implement their own timeout logic
 func (hi *Interface) SelectAddress(reqAddress net.IP, propTime time.Duration, xf, xl int) (*net.IPNet, error) {
-	gw, sn, err := hi.getConnectionInfo()
+	_, sn, err := hi.getConnectionInfo()
 	if err != nil {
 		return nil, err
 	}
@@ -184,8 +184,8 @@ func (hi *Interface) SelectAddress(reqAddress net.IP, propTime time.Duration, xf
 	// add host route to routing table
 	log.Debug("adding route to")
 	err = netlink.RouteAdd(&netlink.Route{
-		Dst: addrOnly,
-		Gw:  gw,
+		LinkIndex: hi.mvl.GetIndex(),
+		Dst:       addrOnly,
 	})
 	if err != nil {
 		log.WithError(err).Error("failed to add route")

@@ -10,10 +10,9 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
 	gphnet "github.com/docker/go-plugins-helpers/network"
-	"golang.org/x/net/context"
 
+	"github.com/TrilliumIT/vxrouter/docker/client"
 	"github.com/TrilliumIT/vxrouter/host"
 )
 
@@ -126,7 +125,7 @@ func (d *Driver) FreeNetwork(r *gphnet.FreeNetworkRequest) error {
 func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.CreateEndpointResponse, error) {
 	d.log.WithField("r", r).Debug("CreateEndpoint()")
 
-	nr, err := d.getNetworkResource(r.NetworkID)
+	nr, err := d.client.GetNetworkResource(r.NetworkID)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
 		return nil, err
@@ -188,7 +187,7 @@ func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.Create
 func (d *Driver) DeleteEndpoint(r *gphnet.DeleteEndpointRequest) error {
 	d.log.WithField("r", r).Debug("DeleteEndpoint()")
 
-	nr, err := d.getNetworkResource(r.NetworkID)
+	nr, err := d.client.GetNetworkResource(r.NetworkID)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
 		return err
@@ -206,7 +205,7 @@ func (d *Driver) DeleteEndpoint(r *gphnet.DeleteEndpointRequest) error {
 		return err
 	}
 
-	containers, err := d.client.ContainerList(context.Background(), types.ContainerListOptions{})
+	containers, err := d.client.GetContainers()
 	if err != nil {
 		d.log.WithError(err).Error("failed to list containers")
 		return err
@@ -249,7 +248,7 @@ func (d *Driver) EndpointInfo(r *gphnet.InfoRequest) (*gphnet.InfoResponse, erro
 
 // Join is the last thing called before the nic is put into the container namespace
 func (d *Driver) Join(r *gphnet.JoinRequest) (*gphnet.JoinResponse, error) {
-	nr, err := d.getNetworkResource(r.NetworkID)
+	nr, err := d.client.GetNetworkResource(r.NetworkID)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
 		return nil, err
@@ -315,38 +314,6 @@ func (d *Driver) RevokeExternalConnectivity(r *gphnet.RevokeExternalConnectivity
 	return nil
 }
 
-func (d *Driver) getNetworkResource(id string) (*types.NetworkResource, error) {
-	log := d.log.WithField("net_id", id)
-	log.Debug("getNetworkResource")
-
-	//first check local cache with a read-only mutex
-	d.nrCacheLock.RLock()
-	var err error
-	if nr, ok := d.nrCache[id]; ok {
-		d.nrCacheLock.RUnlock()
-		return nr, nil
-	}
-	d.nrCacheLock.RUnlock()
-
-	//netid wasn't in cache, fetch from docker inspect
-	d.nrCacheLock.Lock()
-	defer d.nrCacheLock.Unlock()
-	nr, err := d.client.NetworkInspect(context.Background(), id)
-	if err != nil {
-		log.WithError(err).Error("failed to inspect network")
-		return nil, err
-	}
-
-	if nr.Driver != DriverName {
-		err := fmt.Errorf("network is not a %v", DriverName)
-		return nil, err
-	}
-
-	d.nrCache[id] = &nr
-
-	return &nr, nil
-}
-
 func getEnvIntWithDefault(val, opt string, def int) int {
 	e := os.Getenv(val)
 	if e == "" {
@@ -365,7 +332,7 @@ func getEnvIntWithDefault(val, opt string, def int) int {
 
 //loop over the IPAMConfig array, combine gw and sn into a cidr
 func (d *Driver) getGateway(networkid string) (*net.IPNet, error) {
-	nr, err := d.getNetworkResource(networkid)
+	nr, err := d.client.GetNetworkResource(networkid)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", networkid).Error("failed to get network resource")
 		return nil, err

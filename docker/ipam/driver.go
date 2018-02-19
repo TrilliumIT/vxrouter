@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	gphipam "github.com/docker/go-plugins-helpers/ipam"
+
+	"github.com/TrilliumIT/vxrouter/docker/client"
 )
 
 const (
@@ -14,11 +16,13 @@ const (
 )
 
 // Driver is the driver ipam type
-type Driver struct{}
+type Driver struct {
+	client *client.Client
+}
 
 // NewDriver creates new ipam driver
-func NewDriver() (*Driver, error) {
-	return &Driver{}, nil
+func NewDriver(client *client.Client) (*Driver, error) {
+	return &Driver{client}, nil
 }
 
 // GetCapabilities does nothing

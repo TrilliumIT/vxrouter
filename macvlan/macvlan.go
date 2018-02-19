@@ -141,3 +141,9 @@ func (m *Macvlan) GetParentIndex() int {
 	m.log.Debug("GetParentIndex")
 	return m.nl.Attrs().ParentIndex
 }
+
+// GetIndex returns the index of the interface
+func (m *Macvlan) GetIndex() int {
+	m.log.Debug("GetIndex")
+	return m.nl.Attrs().Index
+}
