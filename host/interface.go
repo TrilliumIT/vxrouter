@@ -3,6 +3,7 @@ package host
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -13,20 +14,36 @@ import (
 	"github.com/TrilliumIT/vxrouter/vxlan"
 )
 
+var (
+	rwm     = make(map[string]*sync.RWMutex)
+	rwmLock sync.Mutex
+)
+
 // Interface holds a vxlan and a host macvlan interface used for the gateway interface on a container network
 type Interface struct {
 	name string
 	vxl  *vxlan.Vxlan
 	mvl  *macvlan.Macvlan
 	log  *log.Entry
+	l    *sync.RWMutex
 }
 
 // GetOrCreateInterface creates required host interfaces if they don't exist, or gets them if they already do
 func GetOrCreateInterface(name string, gateway *net.IPNet, opts map[string]string) (*Interface, error) {
 	log := log.WithField("Interface", name)
-	log.Debug("GetOrCreateInterface")
+	log.Debug("GetOrCreateInterface()")
 	hi, _ := getInterface(name)
-	log = hi.log
+	hi.log = log
+
+	hi.l.RLock()
+	if hi.vxl != nil && hi.mvl != nil && hi.mvl.HasAddress(gateway) {
+		hi.l.RUnlock()
+		return hi, nil
+	}
+	hi.l.RUnlock()
+	hi.l.Lock()
+	defer hi.l.Unlock()
+	hi, _ = getInterface(name)
 
 	var err error
 	if hi.vxl == nil {
@@ -79,15 +96,25 @@ func GetInterface(name string) (*Interface, error) {
 
 func getInterface(name string) (*Interface, error) {
 	log := log.WithField("Interface", name)
-	log.Debug("GetInterface")
+	log.Debug("getInterface")
 
 	hi := &Interface{
 		name: name,
 		log:  log,
 	}
 
+	rwmLock.Lock()
+
+	if _, ok := rwm[name]; !ok {
+		rwm[name] = &sync.RWMutex{}
+	}
+
+	hi.l = rwm[name]
+
+	rwmLock.Unlock()
+
 	var err error
-	hi.vxl, err = vxlan.GetVxlan(name)
+	hi.vxl, err = vxlan.FromName(name)
 	if err != nil {
 		log.Debug("failed to get vxlan interface")
 		return hi, err
@@ -99,6 +126,16 @@ func getInterface(name string) (*Interface, error) {
 	}
 
 	return hi, err
+}
+
+// Lock locks the host interface
+func (hi *Interface) Lock() {
+	hi.l.Lock()
+}
+
+// Unlock unlocks the host interface
+func (hi *Interface) Unlock() {
+	hi.l.Unlock()
 }
 
 // CreateMacvlan creates container macvlan interfaces
@@ -115,25 +152,52 @@ func (hi *Interface) DeleteMacvlan(name string) error {
 }
 
 // Delete deletes the host interface, only if there are no additional slave devices attached to the vxlan
+// this function assumes no containers are running on this macvlan, as slaves in other namespaces
+// will not show up
+// Caller is responsible for locking/unlocking the host interface before calling delete
 func (hi *Interface) Delete() error {
 	hi.log.Debug("Delete")
 
+	// if there are any other slaves, don't delete
 	slaves, err := hi.vxl.GetSlaveDevices()
 	if err != nil {
 		hi.log.WithError(err).Debug("failed to get slaves from vxlan")
 		return err
 	}
-
-	var mvl *macvlan.Macvlan
 	for _, slave := range slaves {
-		// err != nil implies this slave is not a macvlan device, something was added manually, we better not delete the interface
-		// Only slave interface that should be here is hi.mvl
-		if mvl, err = macvlan.FromLink(slave); err == nil && mvl.Equals(hi.mvl) {
+		if slave.Attrs().Index == hi.mvl.GetIndex() {
 			continue
 		}
-		err = fmt.Errorf("other slave devices still exist on this vxlan")
+		hi.log.Debug("other slave devices still exist on this vxlan")
+		return nil
+	}
+
+	_, sn, err := hi.getConnectionInfo()
+	if err != nil {
+		hi.log.WithError(err).Debug("failed to get subnet for host interface")
 		return err
 	}
+
+	// if there are any other routes, don't delete
+	routes, err := netlink.RouteListFiltered(netlink.FAMILY_ALL, &netlink.Route{LinkIndex: hi.mvl.GetIndex()}, netlink.RT_FILTER_OIF)
+	if err != nil {
+		hi.log.WithError(err).Error("failed to get routes")
+		return err
+	}
+	for _, r := range routes {
+		if r.Dst.IP.IsLinkLocalUnicast() {
+			continue
+		}
+		if iputil.SubnetEqualSubnet(r.Dst, sn) {
+			continue
+		}
+		hi.log.WithField("r.Dst", r.Dst.String()).Debug("other routes found on this device, not deleting")
+		return nil
+	}
+
+	rwmLock.Lock()
+	delete(rwm, hi.name)
+	rwmLock.Unlock()
 
 	return hi.vxl.Delete()
 }
@@ -150,18 +214,55 @@ func (hi *Interface) getConnectionInfo() (net.IP, *net.IPNet, error) {
 	return nil, nil, fmt.Errorf("did not find any addresses on the macvlan")
 }
 
-// SelectAddress returns an available random IP on this network, or the requested IP
+// SelectAddress returns an available IP or the requested IP (if available) or an error on timeout
+func (hi *Interface) SelectAddress(reqAddress net.IP, propTime, respTime time.Duration, xf, xl int) (*net.IPNet, error) {
+	log := hi.log
+	if reqAddress != nil {
+		log = log.WithField("reqAddress", reqAddress.String())
+	}
+	log.Debug("SelectAddress()")
+
+	hi.l.RLock()
+	defer hi.l.RUnlock()
+
+	var ip *net.IPNet
+	var err error
+
+	stop := time.Now().Add(respTime)
+	for time.Now().Before(stop) {
+		ip, err = hi.selectAddress(reqAddress, propTime, xf, xl)
+		if err != nil {
+			log.WithError(err).Error("failed to select address")
+			return nil, err
+		}
+		if ip != nil {
+			break
+		}
+		if reqAddress != nil {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	if ip == nil {
+		err = fmt.Errorf("timeout expired while waiting for address")
+		log.WithError(err).Error()
+		return nil, err
+	}
+
+	return ip, nil
+}
+
+// selectAddress returns an available random IP on this network, or the requested IP
 // if it's available. This function may return (nil, nil) if it selects an unavailable address
 // the intention is for the caller to continue calling in a loop until an address is returned
 // this way the caller can implement their own timeout logic
-func (hi *Interface) SelectAddress(reqAddress net.IP, propTime time.Duration, xf, xl int) (*net.IPNet, error) {
+func (hi *Interface) selectAddress(reqAddress net.IP, propTime time.Duration, xf, xl int) (*net.IPNet, error) {
 	_, sn, err := hi.getConnectionInfo()
 	if err != nil {
 		return nil, err
 	}
 
 	addrInSubnet, addrOnly := getIPNets(reqAddress, sn)
-	log := hi.log.WithField("ip", addrOnly.IP.String())
 
 	if reqAddress != nil && !sn.Contains(reqAddress) {
 		return nil, fmt.Errorf("requested address was not in this host interface's subnet")
@@ -180,6 +281,8 @@ func (hi *Interface) SelectAddress(reqAddress net.IP, propTime time.Duration, xf
 	if numRoutes > 0 {
 		return nil, nil
 	}
+
+	log := log.WithField("ip", addrOnly.IP.String())
 
 	// add host route to routing table
 	log.Debug("adding route to")
@@ -219,7 +322,7 @@ func (hi *Interface) SelectAddress(reqAddress net.IP, propTime time.Duration, xf
 
 // DelRoute deletes the /32 or /128 to the passed address
 func (hi *Interface) DelRoute(ip net.IP) error {
-	gw, sn, err := hi.getConnectionInfo()
+	_, sn, err := hi.getConnectionInfo()
 	if err != nil {
 		return err
 	}
@@ -227,7 +330,7 @@ func (hi *Interface) DelRoute(ip net.IP) error {
 	_, addrOnly := getIPNets(ip, sn)
 
 	return netlink.RouteDel(&netlink.Route{
-		Dst: addrOnly,
-		Gw:  gw,
+		LinkIndex: hi.mvl.GetIndex(),
+		Dst:       addrOnly,
 	})
 }

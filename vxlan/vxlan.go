@@ -162,8 +162,8 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 	return &Vxlan{nl, log}, nil
 }
 
-// GetVxlan gets a vxlan interface by name
-func GetVxlan(name string) (*Vxlan, error) {
+// FromName gets a vxlan interface by name
+func FromName(name string) (*Vxlan, error) {
 	log := log.WithField("Vxlan", name)
 	log.Debug("GetVxlan")
 

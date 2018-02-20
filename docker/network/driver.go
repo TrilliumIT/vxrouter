@@ -2,16 +2,12 @@ package network
 
 import (
 	"fmt"
-	"net"
 	"strconv"
-	"sync"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/docker/docker/api/types"
 	gphnet "github.com/docker/go-plugins-helpers/network"
 
 	"github.com/TrilliumIT/vxrouter/docker/core"
-	"github.com/TrilliumIT/vxrouter/host"
 )
 
 const (
@@ -21,11 +17,9 @@ const (
 
 // Driver is a vxrouter network driver
 type Driver struct {
-	scope       string
-	core        *core.Core
-	log         *log.Entry
-	nrCache     map[string]*types.NetworkResource
-	nrCacheLock *sync.RWMutex
+	scope string
+	core  *core.Core
+	log   *log.Entry
 }
 
 // NewDriver creates a new Driver
@@ -34,8 +28,6 @@ func NewDriver(scope string, core *core.Core) (*Driver, error) {
 		scope,
 		core,
 		log.WithField("driver", DriverName),
-		make(map[string]*types.NetworkResource),
-		&sync.RWMutex{},
 	}
 	return d, nil
 }
@@ -105,6 +97,7 @@ func (d *Driver) AllocateNetwork(r *gphnet.AllocateNetworkRequest) (*gphnet.Allo
 // DeleteNetwork is called on docker network rm
 func (d *Driver) DeleteNetwork(r *gphnet.DeleteNetworkRequest) error {
 	d.log.WithField("r", r).Debug("DeleteNetwork()")
+
 	return nil
 }
 
@@ -125,59 +118,7 @@ func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.Create
 func (d *Driver) DeleteEndpoint(r *gphnet.DeleteEndpointRequest) error {
 	d.log.WithField("r", r).Debug("DeleteEndpoint()")
 
-	//TODO: move to core func
-
-	nr, err := d.core.GetNetworkResourceByID(r.NetworkID)
-	if err != nil {
-		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
-		return err
-	}
-
-	hi, err := host.GetInterface(nr.Name)
-	if err != nil {
-		return err
-	}
-
-	mvlName := "cmvl_" + r.EndpointID[:7]
-	err = hi.DeleteMacvlan(mvlName)
-	if err != nil {
-		d.log.WithError(err).Error("failed to delete macvlan for container")
-		return err
-	}
-
-	containers, err := d.core.GetContainers()
-	if err != nil {
-		d.log.WithError(err).Error("failed to list containers")
-		return err
-	}
-
-	delHi := true
-	for _, c := range containers {
-		ns, ok := c.NetworkSettings.Networks[nr.Name]
-		if !ok {
-			continue
-		}
-
-		if ns.EndpointID != r.EndpointID {
-			d.log.Debug("other containers are still running on this network")
-			delHi = false
-			continue
-		}
-
-		if err := hi.DelRoute(net.ParseIP(ns.IPAddress)); err != nil {
-			d.log.WithError(err).Debug("failed to delete route")
-			return err
-		}
-		if !delHi {
-			break
-		}
-	}
-
-	if delHi {
-		return hi.Delete()
-	}
-
-	return nil
+	return d.core.DeleteContainerInterface(r.NetworkID, r.EndpointID)
 }
 
 // EndpointInfo is called on inspect... maybe?
@@ -188,25 +129,15 @@ func (d *Driver) EndpointInfo(r *gphnet.InfoRequest) (*gphnet.InfoResponse, erro
 
 // Join is the last thing called before the nic is put into the container namespace
 func (d *Driver) Join(r *gphnet.JoinRequest) (*gphnet.JoinResponse, error) {
-	nr, err := d.client.GetNetworkResourceByID(r.NetworkID)
-	if err != nil {
-		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
-		return nil, err
-	}
+	d.log.WithField("r", r).Debug("Join()")
 
-	hi, err := host.GetInterface(nr.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	mvlName := "cmvl_" + r.EndpointID[:7]
-	err = hi.CreateMacvlan(mvlName)
+	mvlName, err := d.core.CreateContainerInterface(r.NetworkID, r.EndpointID)
 	if err != nil {
 		d.log.WithError(err).Error("failed to create macvlan for container")
 		return nil, err
 	}
 
-	gw, err := d.getGateway(r.NetworkID)
+	gw, err := d.core.GetGatewayByNetID(r.NetworkID)
 	if err != nil {
 		d.log.WithError(err).Error("failed to get gateway")
 		return nil, err

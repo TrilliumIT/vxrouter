@@ -14,7 +14,7 @@ import (
 	gphnet "github.com/docker/go-plugins-helpers/network"
 	"github.com/urfave/cli"
 
-	"github.com/TrilliumIT/vxrouter/docker/client"
+	"github.com/TrilliumIT/vxrouter/docker/core"
 	"github.com/TrilliumIT/vxrouter/docker/ipam"
 	"github.com/TrilliumIT/vxrouter/docker/network"
 )
@@ -78,18 +78,18 @@ func Run(ctx *cli.Context) {
 	pt := ctx.Duration("prop-timeout")
 	rt := ctx.Duration("resp-timeout")
 
-	client, err := client.NewClient()
+	core, err := core.NewCore(pt, rt)
 	if err != nil {
-		log.WithError(err).Fatal("failed to create docker client")
+		log.WithError(err).Fatal("failed to create docker core")
 	}
 
-	nd, err := network.NewDriver(ns, pt, rt, client)
+	nd, err := network.NewDriver(ns, core)
 	if err != nil {
 		log.WithField("driver", network.DriverName).WithError(err).Fatal("failed to create driver")
 	}
 	ncerr := make(chan error)
 
-	id, err := ipam.NewDriver(client)
+	id, err := ipam.NewDriver(core)
 	if err != nil {
 		log.WithField("driver", ipam.DriverName).WithError(err).Fatal("failed to create driver")
 	}

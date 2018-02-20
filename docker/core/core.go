@@ -60,7 +60,7 @@ func (c *Core) GetContainers() ([]types.Container, error) {
 // GetNetworkResourceByID gets a network resource by ID (checks cache first)
 func (c *Core) GetNetworkResourceByID(id string) (*types.NetworkResource, error) {
 	log := log.WithField("net_id", id)
-	log.Debug("getNetworkResourceByID")
+	log.Debug("GetNetworkResourceByID()")
 
 	//first check local cache with a read-only mutex
 	c.nrCacheLock.RLock()
@@ -123,7 +123,21 @@ func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, er
 	return nr, nil
 }
 
+// Uncache uncaches the network resources
+func (c *Core) Uncache(poolid string) {
+	c.nrCacheLock.Lock()
+	defer c.nrCacheLock.Unlock()
+	if _, ok := c.nrByPool[poolid]; !ok {
+		return
+	}
+	delete(c.nrByID, c.nrByPool[poolid].ID)
+	delete(c.nrByPool, poolid)
+}
+
 func (c *Core) cacheNetworkResource(nr *types.NetworkResource) {
+	log := log.WithField("nr.Name", nr.Name)
+	log.Debug("cacheNetworkResource()")
+
 	c.nrCacheLock.Lock()
 	defer c.nrCacheLock.Unlock()
 
@@ -137,15 +151,22 @@ func (c *Core) cacheNetworkResource(nr *types.NetworkResource) {
 	c.nrByPool[pool] = nr
 }
 
-func (c *Core) RequestAddress(addr, poolid string) (*net.IPNet, error) {
+// ConnectAndGetAddress connects the host to the network for the
+// passed in pool, and returns either an available random or the
+// requested address if it's available
+func (c *Core) ConnectAndGetAddress(addr, poolid string) (*net.IPNet, error) {
+	log := log.WithField("addr", addr)
+	log = log.WithField("poolid", poolid)
+	log.Debug("ConnectAndGetAddress()")
+
 	pool := poolFromID(poolid)
 	nr, err := c.GetNetworkResourceByPool(pool)
 	if err != nil {
-		log.WithError(err).WithField("pool", pool).Error("failed to get network resource")
+		log.WithError(err).Error("failed to get network resource")
 		return nil, err
 	}
 
-	gw, err := c.getGateway(nr.ID)
+	gw, err := c.GetGatewayByNetID(nr.ID)
 	if err != nil {
 		log.WithError(err).Error("failed to get gateway")
 		return nil, err
@@ -161,37 +182,18 @@ func (c *Core) RequestAddress(addr, poolid string) (*net.IPNet, error) {
 		return nil, err
 	}
 
-	rip, _, _ := net.ParseCIDR(addr) //nolint errcheck
-	var ip *net.IPNet
-	stop := time.Now().Add(c.respTime)
-	for time.Now().Before(stop) {
-		ip, err = hi.SelectAddress(rip, c.propTime, xf, xl)
-		if err != nil {
-			log.WithError(err).Error("failed to select address")
-			return nil, err
-		}
-		if ip != nil {
-			break
-		}
-		if rip != nil {
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-
-	if ip == nil {
-		err = fmt.Errorf("timeout expired while waiting for address")
-		log.WithError(err).Error()
-		return nil, err
-	}
-
-	return ip, nil
+	rip := net.ParseIP(addr)
+	return hi.SelectAddress(rip, c.propTime, c.respTime, xf, xl)
 }
 
-//loop over the IPAMConfig array, combine gw and sn into a cidr
-func (c *Core) getGateway(networkid string) (*net.IPNet, error) {
-	nr, err := c.GetNetworkResourceByID(networkid)
+// GetGatewayByNetID loops over the IPAMConfig array, combine gw and sn into a cidr
+func (c *Core) GetGatewayByNetID(netid string) (*net.IPNet, error) {
+	log := log.WithField("netid", netid)
+	log.Debug("GetGatewayByNetID()")
+
+	nr, err := c.GetNetworkResourceByID(netid)
 	if err != nil {
-		log.WithError(err).WithField("NetworkID", networkid).Error("failed to get network resource")
+		log.WithError(err).WithField("NetworkID", netid).Error("failed to get network resource")
 		return nil, err
 	}
 
@@ -210,4 +212,130 @@ func (c *Core) getGateway(networkid string) (*net.IPNet, error) {
 	}
 
 	return nil, fmt.Errorf("no gateway with subnet found in ipam config")
+}
+
+// GetGatewayByPoolID return the gateway by the poolid (I don't think I'm calling this anymore)
+func (c *Core) GetGatewayByPoolID(poolid string) (*net.IPNet, error) {
+	log := log.WithField("poolid", poolid)
+	log.Debug("GetGatewayByNetID()")
+
+	pool := poolFromID(poolid)
+	nr, err := c.GetNetworkResourceByPool(pool)
+	if err != nil {
+		return nil, err
+	}
+	return c.GetGatewayByNetID(nr.ID)
+}
+
+// CreateContainerInterface creates the macvlan to be put into a container namespace
+// returns the name of the interface
+func (c *Core) CreateContainerInterface(netid, endpointid string) (string, error) {
+	log := log.WithField("netid", netid)
+	log = log.WithField("endpointid", endpointid)
+	log.Debug("CreateContainerInterface()")
+
+	nr, err := c.GetNetworkResourceByID(netid)
+	if err != nil {
+		log.WithError(err).WithField("netid", netid).Error("failed to get network resource")
+		return "", err
+	}
+
+	gw, err := c.GetGatewayByNetID(nr.ID)
+	if err != nil {
+		log.WithError(err).Error("failed to get gateway")
+		return "", err
+	}
+
+	hi, err := host.GetOrCreateInterface(nr.Name, gw, nr.Options)
+	if err != nil {
+		return "", err
+	}
+
+	mvlName := "cmvl_" + endpointid[:7]
+	err = hi.CreateMacvlan(mvlName)
+	if err != nil {
+		log.WithError(err).Error("failed to create macvlan for container")
+		return "", err
+	}
+
+	return mvlName, nil
+}
+
+// DeleteContainerInterface deletes the container interface, removes the route
+// and deletes the host interface if it's the last container
+func (c *Core) DeleteContainerInterface(netid, endpointid string) error {
+	log := log.WithField("netid", netid)
+	log = log.WithField("endpointid", endpointid)
+	log.Debug("CreateContainerInterface()")
+
+	nr, err := c.GetNetworkResourceByID(netid)
+	if err != nil {
+		log.WithError(err).WithField("NetworkID", netid).Error("failed to get network resource")
+		return err
+	}
+
+	hi, err := host.GetInterface(nr.Name)
+	if err != nil {
+		return err
+	}
+
+	mvlName := "cmvl_" + endpointid[:7]
+	err = hi.DeleteMacvlan(mvlName)
+	if err != nil {
+		log.WithError(err).Error("failed to delete macvlan for container")
+		return err
+	}
+
+	return nil
+}
+
+// CheckAndDeleteInterface checks the host interface for running containers, and if non, deletes it
+func (c *Core) CheckAndDeleteInterface(hi *host.Interface, netName, address string) {
+	hi.Lock()
+	defer hi.Unlock()
+
+	containers, err := c.GetContainers()
+	if err != nil {
+		log.WithError(err).Error("failed to list containers")
+		return
+	}
+
+	for _, c := range containers {
+		ns, ok := c.NetworkSettings.Networks[netName]
+		if !ok {
+			continue
+		}
+
+		if ns.IPAddress != address {
+			log.Debug("other containers are still running on this network")
+			return
+		}
+	}
+
+	if err := hi.Delete(); err != nil {
+		log.WithError(err).Error("failed to delete host interface")
+	}
+}
+
+// DeleteRoute deletes a route... who'd have thought?
+func (c *Core) DeleteRoute(address, poolid string) error {
+	pool := poolFromID(poolid)
+	nr, err := c.GetNetworkResourceByPool(pool)
+	if err != nil {
+		return err
+	}
+
+	hi, err := host.GetInterface(nr.Name)
+	if err != nil {
+		return err
+	}
+
+	err = hi.DelRoute(net.ParseIP(address))
+	if err != nil {
+		return err
+	}
+
+	go c.CheckAndDeleteInterface(hi, nr.Name, address)
+
+	return nil
 }

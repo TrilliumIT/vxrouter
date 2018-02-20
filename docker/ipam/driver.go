@@ -2,8 +2,6 @@ package ipam
 
 import (
 	"fmt"
-	"net"
-	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	gphipam "github.com/docker/go-plugins-helpers/ipam"
@@ -19,25 +17,30 @@ const (
 // Driver is the driver ipam type
 type Driver struct {
 	core *core.Core
+	log  *log.Entry
 }
 
 // NewDriver creates new ipam driver
 func NewDriver(core *core.Core) (*Driver, error) {
-	return &Driver{core}, nil
+	return &Driver{core, log.WithField("driver", DriverName)}, nil
 }
 
 // GetCapabilities does nothing
 func (d *Driver) GetCapabilities() (*gphipam.CapabilitiesResponse, error) {
+	d.log.Debug("GetCapabilities()")
 	return &gphipam.CapabilitiesResponse{}, nil
 }
 
 // GetDefaultAddressSpaces does nothing
 func (d *Driver) GetDefaultAddressSpaces() (*gphipam.AddressSpacesResponse, error) {
+	d.log.Debug("GetDefaultAddressSpaces()")
 	return &gphipam.AddressSpacesResponse{}, nil
 }
 
 // RequestPool reflects the pool back to the caller
 func (d *Driver) RequestPool(r *gphipam.RequestPoolRequest) (*gphipam.RequestPoolResponse, error) {
+	d.log.WithField("r", r).Debug("RequestPool()")
+
 	if r.Pool == "" {
 		return nil, fmt.Errorf("this driver does not support automatic address pools")
 	}
@@ -50,27 +53,33 @@ func (d *Driver) RequestPool(r *gphipam.RequestPoolRequest) (*gphipam.RequestPoo
 	return rpr, nil
 }
 
-// ReleasePool does nothing
+// ReleasePool clears the network resource cache from core
 func (d *Driver) ReleasePool(r *gphipam.ReleasePoolRequest) error {
+	d.log.WithField("r", r).Debug("ReleasePool()")
+	d.core.Uncache(r.PoolID)
 	return nil
 }
 
-// RequestAddress does nothing
+// RequestAddress calls the core function to connect and get an available address
 func (d *Driver) RequestAddress(r *gphipam.RequestAddressRequest) (*gphipam.RequestAddressResponse, error) {
-	rar := &gphipam.RequestAddressResponse{}
-	if r.Address != "" {
-		_, sn, err := net.ParseCIDR()
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse subnet")
-		}
-		gwn := &net.IPNet{IP: net.ParseIP(r.Address), Mask: sn.Mask}
-		rar.Address = gwn.String()
-		return rar, nil
+	d.log.WithField("r", r).Debug("RequestAddress()")
+
+	addr, err := d.core.ConnectAndGetAddress(r.Address, r.PoolID)
+	if err != nil {
+		log.WithField("r.Address", r.Address).WithField("r.PoolID", r.PoolID).Error("failed to get address")
+		return nil, err
 	}
-	return nil, nil
+
+	rar := &gphipam.RequestAddressResponse{
+		Address: addr.String(),
+	}
+
+	return rar, nil
 }
 
 // ReleaseAddress does nothing
 func (d *Driver) ReleaseAddress(r *gphipam.ReleaseAddressRequest) error {
-	return nil
+	d.log.WithField("r", r).Debug("ReleaseAddress()")
+
+	return d.core.DeleteRoute(r.Address, r.PoolID)
 }
