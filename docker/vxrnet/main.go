@@ -10,7 +10,6 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/docker/docker/client"
 	gphipam "github.com/docker/go-plugins-helpers/ipam"
 	gphnet "github.com/docker/go-plugins-helpers/network"
 	"github.com/urfave/cli"

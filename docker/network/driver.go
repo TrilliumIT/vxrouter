@@ -125,7 +125,7 @@ func (d *Driver) FreeNetwork(r *gphnet.FreeNetworkRequest) error {
 func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.CreateEndpointResponse, error) {
 	d.log.WithField("r", r).Debug("CreateEndpoint()")
 
-	nr, err := d.client.GetNetworkResource(r.NetworkID)
+	nr, err := d.client.GetNetworkResourceByID(r.NetworkID)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
 		return nil, err
@@ -187,7 +187,7 @@ func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.Create
 func (d *Driver) DeleteEndpoint(r *gphnet.DeleteEndpointRequest) error {
 	d.log.WithField("r", r).Debug("DeleteEndpoint()")
 
-	nr, err := d.client.GetNetworkResource(r.NetworkID)
+	nr, err := d.client.GetNetworkResourceByID(r.NetworkID)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
 		return err
@@ -248,7 +248,7 @@ func (d *Driver) EndpointInfo(r *gphnet.InfoRequest) (*gphnet.InfoResponse, erro
 
 // Join is the last thing called before the nic is put into the container namespace
 func (d *Driver) Join(r *gphnet.JoinRequest) (*gphnet.JoinResponse, error) {
-	nr, err := d.client.GetNetworkResource(r.NetworkID)
+	nr, err := d.client.GetNetworkResourceByID(r.NetworkID)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
 		return nil, err
@@ -332,7 +332,7 @@ func getEnvIntWithDefault(val, opt string, def int) int {
 
 //loop over the IPAMConfig array, combine gw and sn into a cidr
 func (d *Driver) getGateway(networkid string) (*net.IPNet, error) {
-	nr, err := d.client.GetNetworkResource(networkid)
+	nr, err := d.client.GetNetworkResourceByID(networkid)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", networkid).Error("failed to get network resource")
 		return nil, err

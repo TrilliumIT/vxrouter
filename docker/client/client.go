@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	//should really find a better place for these
-	//rather than duplicating the names
+	//should really find a better place for this
+	//rather than duplicating the driver name
 	networkDriverName = "vxrNet"
-	ipamDriverName    = "vxrIpam"
 )
 
+// Client is a wrapper for docker client type things
 type Client struct {
 	dc          *client.Client
 	nrByID      map[string]*types.NetworkResource
@@ -25,6 +25,7 @@ type Client struct {
 	nrCacheLock *sync.RWMutex
 }
 
+// NewClient creates a new client
 func NewClient() (*Client, error) {
 	dc, err := client.NewEnvClient()
 	if err != nil {
@@ -41,10 +42,12 @@ func NewClient() (*Client, error) {
 	return c, nil
 }
 
+// GetContainers gets a list of docker containers
 func (c *Client) GetContainers() ([]types.Container, error) {
 	return c.dc.ContainerList(context.Background(), types.ContainerListOptions{})
 }
 
+// GetNetworkResourceByID gets a network resource by ID (checks cache first)
 func (c *Client) GetNetworkResourceByID(id string) (*types.NetworkResource, error) {
 	log := log.WithField("net_id", id)
 	log.Debug("getNetworkResourceByID")
@@ -71,6 +74,7 @@ func (c *Client) GetNetworkResourceByID(id string) (*types.NetworkResource, erro
 	return &nr, nil
 }
 
+// GetNetworkResourceByPool gets a network resource by it's subnet
 func (c *Client) GetNetworkResourceByPool(pool string) (*types.NetworkResource, error) {
 	log := log.WithField("pool", pool)
 	log.Debug("getNetworkResourceByPool")
@@ -99,7 +103,7 @@ func (c *Client) GetNetworkResourceByPool(pool string) (*types.NetworkResource, 
 		if err != nil {
 			continue
 		}
-		tp, _ := poolFromNR(tnr)
+		tp, _ := poolFromNR(tnr) // nolint errcheck
 		if tp == pool {
 			nr = tnr
 			break
