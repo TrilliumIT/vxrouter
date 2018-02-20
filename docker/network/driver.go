@@ -3,7 +3,6 @@ package network
 import (
 	"fmt"
 	"net"
-	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -124,56 +123,6 @@ func (d *Driver) FreeNetwork(r *gphnet.FreeNetworkRequest) error {
 // CreateEndpoint is called after IPAM has assigned an address, before Join is called
 func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.CreateEndpointResponse, error) {
 	d.log.WithField("r", r).Debug("CreateEndpoint()")
-
-	nr, err := d.client.GetNetworkResourceByID(r.NetworkID)
-	if err != nil {
-		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
-		return nil, err
-	}
-
-	gw, err := d.getGateway(r.NetworkID)
-	if err != nil {
-		d.log.WithError(err).Error("failed to get gateway")
-		return nil, err
-	}
-
-	//exclude network and (normal) broadcast addresses by default
-
-	xf := getEnvIntWithDefault(envPrefix+"excludefirst", nr.Options["excludefirst"], 1)
-	xl := getEnvIntWithDefault(envPrefix+"excludelast", nr.Options["excludelast"], 1)
-
-	hi, err := host.GetOrCreateInterface(nr.Name, gw, nr.Options)
-	if err != nil {
-		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get or create host interface")
-		return nil, err
-	}
-
-	rip, _, _ := net.ParseCIDR(r.Interface.Address) //nolint errcheck
-	var ip *net.IPNet
-	stop := time.Now().Add(d.respTime)
-	for time.Now().Before(stop) {
-		ip, err = hi.SelectAddress(rip, d.propTime, xf, xl)
-		if err != nil {
-			d.log.WithError(err).Error("failed to select address")
-			return nil, err
-		}
-		if ip != nil {
-			break
-		}
-		if rip != nil {
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-
-	if ip == nil {
-		err = fmt.Errorf("timeout expired while waiting for address")
-		d.log.WithError(err).Error()
-		return nil, err
-	}
-
-	if rip != nil {
-		return nil, nil
-	}
 
 	cer := &gphnet.CreateEndpointResponse{
 		Interface: &gphnet.EndpointInterface{
@@ -312,22 +261,6 @@ func (d *Driver) RevokeExternalConnectivity(r *gphnet.RevokeExternalConnectivity
 	d.log.WithField("r", r).Debug("RevokeExternalConnectivity()")
 
 	return nil
-}
-
-func getEnvIntWithDefault(val, opt string, def int) int {
-	e := os.Getenv(val)
-	if e == "" {
-		e = opt
-	}
-	if e == "" {
-		return def
-	}
-	ei, err := strconv.Atoi(e)
-	if err != nil {
-		log.WithField("string", e).WithError(err).Warnf("failed to convert string to int, using default")
-		return def
-	}
-	return ei
 }
 
 //loop over the IPAMConfig array, combine gw and sn into a cidr

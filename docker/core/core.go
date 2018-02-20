@@ -1,7 +1,6 @@
 package client
 
 import (
-	"fmt"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
@@ -12,27 +11,28 @@ import (
 )
 
 const (
-	//should really find a better place for this
-	//rather than duplicating the driver name
+	//should really find a better place for these
+	//rather than duplicating the driver names
 	networkDriverName = "vxrNet"
+	ipamDriverName    = "vxrIpam"
 )
 
-// Client is a wrapper for docker client type things
-type Client struct {
+// Core is a wrapper for docker client type things
+type Core struct {
 	dc          *client.Client
 	nrByID      map[string]*types.NetworkResource
 	nrByPool    map[string]*types.NetworkResource
 	nrCacheLock *sync.RWMutex
 }
 
-// NewClient creates a new client
-func NewClient() (*Client, error) {
+// NewCore creates a new client
+func NewCore() (*Core, error) {
 	dc, err := client.NewEnvClient()
 	if err != nil {
 		return nil, err
 	}
 
-	c := &Client{
+	c := &Core{
 		dc:          dc,
 		nrByID:      make(map[string]*types.NetworkResource),
 		nrByPool:    make(map[string]*types.NetworkResource),
@@ -43,12 +43,12 @@ func NewClient() (*Client, error) {
 }
 
 // GetContainers gets a list of docker containers
-func (c *Client) GetContainers() ([]types.Container, error) {
+func (c *Core) GetContainers() ([]types.Container, error) {
 	return c.dc.ContainerList(context.Background(), types.ContainerListOptions{})
 }
 
 // GetNetworkResourceByID gets a network resource by ID (checks cache first)
-func (c *Client) GetNetworkResourceByID(id string) (*types.NetworkResource, error) {
+func (c *Core) GetNetworkResourceByID(id string) (*types.NetworkResource, error) {
 	log := log.WithField("net_id", id)
 	log.Debug("getNetworkResourceByID")
 
@@ -75,7 +75,7 @@ func (c *Client) GetNetworkResourceByID(id string) (*types.NetworkResource, erro
 }
 
 // GetNetworkResourceByPool gets a network resource by it's subnet
-func (c *Client) GetNetworkResourceByPool(pool string) (*types.NetworkResource, error) {
+func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, error) {
 	log := log.WithField("pool", pool)
 	log.Debug("getNetworkResourceByPool")
 
@@ -113,7 +113,7 @@ func (c *Client) GetNetworkResourceByPool(pool string) (*types.NetworkResource, 
 	return nr, nil
 }
 
-func (c *Client) cacheNetworkResource(nr *types.NetworkResource) {
+func (c *Core) cacheNetworkResource(nr *types.NetworkResource) {
 	c.nrCacheLock.Lock()
 	defer c.nrCacheLock.Unlock()
 
@@ -125,13 +125,4 @@ func (c *Client) cacheNetworkResource(nr *types.NetworkResource) {
 
 	c.nrByID[nr.ID] = nr
 	c.nrByPool[pool] = nr
-}
-
-func poolFromNR(nr *types.NetworkResource) (string, error) {
-	for _, c := range nr.IPAM.Config {
-		if c.Subnet != "" {
-			return c.Subnet, nil
-		}
-	}
-	return "", fmt.Errorf("pool not found")
 }
