@@ -5,18 +5,16 @@ import (
 	"net"
 	"strconv"
 	"sync"
-	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/types"
 	gphnet "github.com/docker/go-plugins-helpers/network"
 
-	"github.com/TrilliumIT/vxrouter/docker/client"
+	"github.com/TrilliumIT/vxrouter/docker/core"
 	"github.com/TrilliumIT/vxrouter/host"
 )
 
 const (
-	envPrefix = "VXR_"
 	// DriverName is the docker plugin name of the driver
 	DriverName = "vxrNet"
 )
@@ -24,21 +22,17 @@ const (
 // Driver is a vxrouter network driver
 type Driver struct {
 	scope       string
-	propTime    time.Duration
-	respTime    time.Duration
-	client      *client.Client
+	core        *core.Core
 	log         *log.Entry
 	nrCache     map[string]*types.NetworkResource
 	nrCacheLock *sync.RWMutex
 }
 
 // NewDriver creates a new Driver
-func NewDriver(scope string, propTime, respTime time.Duration, client *client.Client) (*Driver, error) {
+func NewDriver(scope string, core *core.Core) (*Driver, error) {
 	d := &Driver{
 		scope,
-		propTime,
-		respTime,
-		client,
+		core,
 		log.WithField("driver", DriverName),
 		make(map[string]*types.NetworkResource),
 		&sync.RWMutex{},
@@ -124,19 +118,16 @@ func (d *Driver) FreeNetwork(r *gphnet.FreeNetworkRequest) error {
 func (d *Driver) CreateEndpoint(r *gphnet.CreateEndpointRequest) (*gphnet.CreateEndpointResponse, error) {
 	d.log.WithField("r", r).Debug("CreateEndpoint()")
 
-	cer := &gphnet.CreateEndpointResponse{
-		Interface: &gphnet.EndpointInterface{
-			Address: ip.String(),
-		},
-	}
-	return cer, nil
+	return &gphnet.CreateEndpointResponse{}, nil
 }
 
 // DeleteEndpoint is called after Leave
 func (d *Driver) DeleteEndpoint(r *gphnet.DeleteEndpointRequest) error {
 	d.log.WithField("r", r).Debug("DeleteEndpoint()")
 
-	nr, err := d.client.GetNetworkResourceByID(r.NetworkID)
+	//TODO: move to core func
+
+	nr, err := d.core.GetNetworkResourceByID(r.NetworkID)
 	if err != nil {
 		d.log.WithError(err).WithField("NetworkID", r.NetworkID).Error("failed to get network resource")
 		return err
@@ -154,7 +145,7 @@ func (d *Driver) DeleteEndpoint(r *gphnet.DeleteEndpointRequest) error {
 		return err
 	}
 
-	containers, err := d.client.GetContainers()
+	containers, err := d.core.GetContainers()
 	if err != nil {
 		d.log.WithError(err).Error("failed to list containers")
 		return err
@@ -261,29 +252,4 @@ func (d *Driver) RevokeExternalConnectivity(r *gphnet.RevokeExternalConnectivity
 	d.log.WithField("r", r).Debug("RevokeExternalConnectivity()")
 
 	return nil
-}
-
-//loop over the IPAMConfig array, combine gw and sn into a cidr
-func (d *Driver) getGateway(networkid string) (*net.IPNet, error) {
-	nr, err := d.client.GetNetworkResourceByID(networkid)
-	if err != nil {
-		d.log.WithError(err).WithField("NetworkID", networkid).Error("failed to get network resource")
-		return nil, err
-	}
-
-	for _, ic := range nr.IPAM.Config {
-		gws := ic.Gateway
-		sns := ic.Subnet
-		if gws != "" && sns != "" {
-			gw := net.ParseIP(gws)
-			if gw == nil {
-				err := fmt.Errorf("failed to parse gateway from ipam config")
-				return nil, err
-			}
-			_, sn, err := net.ParseCIDR(sns)
-			return &net.IPNet{IP: gw, Mask: sn.Mask}, err
-		}
-	}
-
-	return nil, fmt.Errorf("no gateway with subnet found in ipam config")
 }

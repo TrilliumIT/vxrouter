@@ -1,9 +1,10 @@
-package client
+package core
 
 import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/types"
@@ -32,4 +33,8 @@ func getEnvIntWithDefault(val, opt string, def int) int {
 		return def
 	}
 	return ei
+}
+
+func poolFromID(poolid string) string {
+	return strings.TrimPrefix(poolid, ipamDriverName+"_")
 }
