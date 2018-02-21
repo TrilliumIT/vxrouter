@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 check_prerequisites() {
 	[[ "$GOPATH" == "" ]] && \

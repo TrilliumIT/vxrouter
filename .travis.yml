@@ -1,0 +1,34 @@
+language: go
+
+go:
+  - 1.9
+
+env:
+  global:
+    - GO15VENDOREXPERIMENT=1
+    - GOOS=linux
+
+before_install:
+  - go get -u github.com/golang/dep/cmd/dep
+
+install:
+  - ./make.sh
+
+script:
+  - cd bin
+  - md5sum vxrnet > md5.txt
+  - sha256sum vxrnet > sha256.txt
+  - sha512sum vxrnet > sha512.txt
+
+deploy:
+  - provider: releases
+    skip_cleanup: true
+    api_key:
+      secure: YfHHN3+FLGF0I2ar6Wv0NkyTMxuQzMarkVhyRRB3ttGeW5UWXwWJqDDp8J4ROiyaZ8Pn/vrL524qYkyThD+ATGjorC1FvyLMQhssGwDv/2z0p8CdOowPXDxlR8ImWF4ZOXqQUSSNyAxk8jpRgjMMO/CVxYQONdHjXUg0CyvU+7ADzIXTfe+LF3gEFw5pClS0s8QkE95l+gRIxESAVf1ny31zcrjZGoBp0YumEtDfh+kN3fxwa/VrctlUK5XnyXdFr1rduuNwlzyzncLTu8z1zTRKhf6EJ4LfClrzq9bCjBmDLOJWx29zskt0DpiXtEjSd56TAF0K5Udflowxxo5t6MKhnJLcYndj1eMkd0JkEdu7dgtIbnADi/Fz4Zf563E8T6FC1fq0b8y09umjuZ0EG7tI4RQT4kIUWr6Y2AM45+7QD5PYKnzTlhFXnIX/YKj/RS4lNv4s8rBlbUDs52k5nLxOpQ7nsKkN8zKtqJ0LTkKuIToiUaHRknf7/2qh1yT+rfgP2jxQuW+BYAw3LvF4OsSRj2lZ1J+Vpn75wbsA8/jqmxQL92VtVi2/LvxajknrzcxrN1Io4Yz/k+b3fwFT9TxTk0Yol0Pi19SWrypk4sopZZvtaO45YOG/XLMSc58jdsvFv+DT/yykzTW8Kd6v62OR4hl7ZsT+JCjbOm7sxYU=
+    file:
+      - vxrnet
+      - md5.txt
+      - sha256.txt
+      - sha512.txt
+    on:
+      tags: true
