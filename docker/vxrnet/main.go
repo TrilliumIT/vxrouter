@@ -14,14 +14,15 @@ import (
 	gphnet "github.com/docker/go-plugins-helpers/network"
 	"github.com/urfave/cli"
 
+	"github.com/TrilliumIT/vxrouter"
 	"github.com/TrilliumIT/vxrouter/docker/core"
 	"github.com/TrilliumIT/vxrouter/docker/ipam"
 	"github.com/TrilliumIT/vxrouter/docker/network"
 )
 
 const (
-	version   = "0.1"
-	envPrefix = "VXR_"
+	version   = vxrouter.Version
+	envPrefix = vxrouter.EnvPrefix
 )
 
 func main() {
@@ -46,13 +47,13 @@ func main() {
 			Name:   "prop-timeout, pt",
 			Value:  100 * time.Millisecond,
 			Usage:  "How long to wait for external route propagation",
-			EnvVar: envPrefix + "IPAM-PROP-TIMEOUT",
+			EnvVar: envPrefix + "PROP-TIMEOUT",
 		},
 		cli.DurationFlag{
 			Name:   "resp-timeout, rt",
 			Value:  10 * time.Second,
 			Usage:  "Maximum allowed response milliseconds, to prevent hanging docker daemon",
-			EnvVar: envPrefix + "IPAM-RESP-TIMEOUT",
+			EnvVar: envPrefix + "RESP-TIMEOUT",
 		},
 	}
 	app.Action = Run

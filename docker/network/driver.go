@@ -7,12 +7,13 @@ import (
 	log "github.com/Sirupsen/logrus"
 	gphnet "github.com/docker/go-plugins-helpers/network"
 
+	"github.com/TrilliumIT/vxrouter"
 	"github.com/TrilliumIT/vxrouter/docker/core"
 )
 
 const (
 	// DriverName is the docker plugin name of the driver
-	DriverName = "vxrNet"
+	DriverName = vxrouter.NetworkDriver
 )
 
 // Driver is a vxrouter network driver

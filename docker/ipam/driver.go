@@ -6,12 +6,13 @@ import (
 	log "github.com/Sirupsen/logrus"
 	gphipam "github.com/docker/go-plugins-helpers/ipam"
 
+	"github.com/TrilliumIT/vxrouter"
 	"github.com/TrilliumIT/vxrouter/docker/core"
 )
 
 const (
 	// DriverName is the name of the driver
-	DriverName = "vxrIpam"
+	DriverName = vxrouter.IpamDriver
 )
 
 // Driver is the driver ipam type

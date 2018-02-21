@@ -10,11 +10,12 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 
+	"github.com/TrilliumIT/vxrouter"
 	"github.com/TrilliumIT/vxrouter/macvlan"
 )
 
 const (
-	envPrefix = "VXR_"
+	envPrefix = vxrouter.EnvPrefix
 )
 
 // Vxlan is a vxlan interface

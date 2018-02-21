@@ -12,15 +12,14 @@ import (
 	"github.com/docker/docker/client"
 	"golang.org/x/net/context"
 
+	"github.com/TrilliumIT/vxrouter"
 	"github.com/TrilliumIT/vxrouter/host"
 )
 
 const (
-	//should really find a better place for these
-	//rather than duplicating the driver names
-	networkDriverName = "vxrNet"
-	ipamDriverName    = "vxrIpam"
-	envPrefix         = "VXR_"
+	networkDriverName = vxrouter.NetworkDriver
+	ipamDriverName    = vxrouter.IpamDriver
+	envPrefix         = vxrouter.EnvPrefix
 )
 
 // Core is a wrapper for docker client type things
