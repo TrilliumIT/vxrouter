@@ -41,19 +41,19 @@ func main() {
 			Name:   "scope, s",
 			Value:  "local",
 			Usage:  "Scope of the network. local or global.",
-			EnvVar: envPrefix + "NETWORK-SCOPE",
+			EnvVar: envPrefix + "NETWORK_SCOPE",
 		},
 		cli.DurationFlag{
 			Name:   "prop-timeout, pt",
 			Value:  100 * time.Millisecond,
 			Usage:  "How long to wait for external route propagation",
-			EnvVar: envPrefix + "PROP-TIMEOUT",
+			EnvVar: envPrefix + "PROP_TIMEOUT",
 		},
 		cli.DurationFlag{
 			Name:   "resp-timeout, rt",
 			Value:  10 * time.Second,
 			Usage:  "Maximum allowed response milliseconds, to prevent hanging docker daemon",
-			EnvVar: envPrefix + "RESP-TIMEOUT",
+			EnvVar: envPrefix + "RESP_TIMEOUT",
 		},
 	}
 	app.Action = Run
