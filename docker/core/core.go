@@ -112,7 +112,7 @@ func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, er
 		if err != nil {
 			continue
 		}
-		tp, _ := poolFromNR(tnr) // nolint errcheck
+		tp, _ := poolFromNR(tnr) // nolint: errcheck
 		if tp == pool {
 			nr = tnr
 			break

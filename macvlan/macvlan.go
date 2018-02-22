@@ -68,8 +68,8 @@ func FromIndex(index int) (*Macvlan, error) {
 	return FromLink(link)
 }
 
-// FromLink returns a Macvlan from an interface index
-// nolint dupl
+// FromLink returns a Macvlan from an interface link
+// nolint: dupl
 func FromLink(link netlink.Link) (*Macvlan, error) {
 	log := log.WithField("Macvlan", link.Attrs().Name)
 	log.Debug("FromLink")

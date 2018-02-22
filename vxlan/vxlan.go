@@ -69,7 +69,7 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 	// Parse interface options
 	var err error
 	for k, v := range opts {
-		log := log.WithField(k, v) // nolint vetshadow
+		log := log.WithField(k, v) // nolint: vetshadow
 		switch strings.ToLower(k) {
 		case "vxlanmtu":
 			nl.LinkAttrs.MTU, err = strconv.Atoi(v)
@@ -128,7 +128,7 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 
 	// Parse interface options
 	for k, v := range opts {
-		log := log.WithField(k, v) // nolint vetshadow
+		log := log.WithField(k, v) // nolint: vetshadow
 		switch strings.ToLower(k) {
 		case "vxlanhardwareaddr":
 			var hardwareAddr net.HardwareAddr
