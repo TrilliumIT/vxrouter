@@ -33,9 +33,19 @@ func parseIP(s string) (net.IP, error) {
 	return r, err
 }
 
-func parseInt(v string) (int, error) {
-	i, err := strconv.ParseInt(v, 0, 32)
-	return int(i), err
+// ParseVxlanID converts a string to a int to validate a vxlan id
+func ParseVxlanID(v string) (int, error) {
+	vid, err := strconv.Atoi(v)
+	if err != nil {
+		var v64 int64
+		v64, err = strconv.ParseInt(v, 0, 0)
+		vid = int(v64)
+	}
+
+	if vid < 0 || vid > 16777215 {
+		err = fmt.Errorf("vxlanid is out of range")
+	}
+	return vid, err
 }
 
 func linkIndexByName(name string) (int, error) {
@@ -78,7 +88,7 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 		case "vxlantxqlen":
 			nl.LinkAttrs.TxQLen, err = strconv.Atoi(v)
 		case "vxlanid":
-			nl.VxlanId, err = parseInt(v)
+			nl.VxlanId, err = ParseVxlanID(v)
 		case "vtepdev":
 			nl.VtepDevIndex, err = linkIndexByName(v)
 		case "srcaddr":

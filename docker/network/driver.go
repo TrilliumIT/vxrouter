@@ -2,13 +2,13 @@ package network
 
 import (
 	"fmt"
-	"strconv"
 
 	log "github.com/Sirupsen/logrus"
 	gphnet "github.com/docker/go-plugins-helpers/network"
 
 	"github.com/TrilliumIT/vxrouter"
 	"github.com/TrilliumIT/vxrouter/docker/core"
+	"github.com/TrilliumIT/vxrouter/vxlan"
 )
 
 const (
@@ -75,18 +75,8 @@ func (d *Driver) CreateNetwork(r *gphnet.CreateNetworkRequest) error {
 		return err
 	}
 
-	vid, err := strconv.Atoi(vxlID.(string))
-	if err != nil {
-		d.log.WithError(err).WithField("vxlanid", vxlID.(string)).Errorf("failed to parse vxlanid")
-		return err
-	}
-	if vid < 0 || vid > 16777215 {
-		err = fmt.Errorf("vxlanid is out of range")
-		d.log.WithField("vxlanid", vid).WithError(err).Error()
-		return err
-	}
-
-	return nil
+	_, err := vxlan.ParseVxlanID(vxlID.(string))
+	return err
 }
 
 // AllocateNetwork is never called
