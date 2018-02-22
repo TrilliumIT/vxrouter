@@ -108,18 +108,17 @@ func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, er
 
 	var nr *types.NetworkResource
 	for _, n := range nl {
-		tnr, err := c.GetNetworkResourceByID(n.ID)
+		nr, err = c.GetNetworkResourceByID(n.ID)
 		if err != nil {
 			continue
 		}
-		tp, _ := poolFromNR(tnr) // nolint: errcheck
+		tp, _ := poolFromNR(nr) // nolint: errcheck
 		if tp == pool {
-			nr = tnr
-			break
+			return nr, nil
 		}
 	}
 
-	return nr, nil
+	return nil, fmt.Errorf("network resource not found")
 }
 
 // Uncache uncaches the network resources
@@ -202,10 +201,11 @@ func (c *Core) GetGatewayByNetID(netid string) (*net.IPNet, error) {
 		if gws != "" && sns != "" {
 			gw := net.ParseIP(gws)
 			if gw == nil {
-				err := fmt.Errorf("failed to parse gateway from ipam config")
+				err = fmt.Errorf("failed to parse gateway from ipam config")
 				return nil, err
 			}
-			_, sn, err := net.ParseCIDR(sns)
+			var sn *net.IPNet
+			_, sn, err = net.ParseCIDR(sns)
 			return &net.IPNet{IP: gw, Mask: sn.Mask}, err
 		}
 	}
@@ -311,7 +311,7 @@ func (c *Core) CheckAndDeleteInterface(hi *host.Interface, netName, address stri
 		}
 	}
 
-	if err := hi.Delete(); err != nil {
+	if err = hi.Delete(); err != nil {
 		log.WithError(err).Error("failed to delete host interface")
 	}
 }

@@ -219,8 +219,9 @@ func (v *Vxlan) GetMacVlans() ([]*macvlan.Macvlan, error) {
 		return r, err
 	}
 
+	var mvl *macvlan.Macvlan
 	for _, link := range allSlaves {
-		mvl, err := macvlan.FromLink(link)
+		mvl, err = macvlan.FromLink(link)
 		if err != nil {
 			continue
 		}
