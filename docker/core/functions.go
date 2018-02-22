@@ -19,7 +19,7 @@ func poolFromNR(nr *types.NetworkResource) (string, error) {
 	return "", fmt.Errorf("pool not found")
 }
 
-func getEnvIntWithDefault(val, opt string, def int) int {
+func getEnvIntWithDefault(val, opt string, def int) int { //nolint unparam
 	e := os.Getenv(val)
 	if e == "" {
 		e = opt

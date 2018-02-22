@@ -172,7 +172,7 @@ func (hi *Interface) Delete() error {
 		return nil
 	}
 
-	_, sn, err := hi.getConnectionInfo()
+	sn, err := hi.getSubnet()
 	if err != nil {
 		hi.log.WithError(err).Debug("failed to get subnet for host interface")
 		return err
@@ -202,16 +202,16 @@ func (hi *Interface) Delete() error {
 	return hi.vxl.Delete()
 }
 
-func (hi *Interface) getConnectionInfo() (net.IP, *net.IPNet, error) {
+func (hi *Interface) getSubnet() (*net.IPNet, error) {
 	gws, err := hi.mvl.GetAddresses()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	for _, gw := range gws {
-		return gw.IP, &net.IPNet{IP: iputil.FirstAddr(gw), Mask: gw.Mask}, nil
+		return &net.IPNet{IP: iputil.FirstAddr(gw), Mask: gw.Mask}, nil
 	}
 
-	return nil, nil, fmt.Errorf("did not find any addresses on the macvlan")
+	return nil, fmt.Errorf("did not find any addresses on the macvlan")
 }
 
 // SelectAddress returns an available IP or the requested IP (if available) or an error on timeout
@@ -257,7 +257,7 @@ func (hi *Interface) SelectAddress(reqAddress net.IP, propTime, respTime time.Du
 // the intention is for the caller to continue calling in a loop until an address is returned
 // this way the caller can implement their own timeout logic
 func (hi *Interface) selectAddress(reqAddress net.IP, propTime time.Duration, xf, xl int) (*net.IPNet, error) {
-	_, sn, err := hi.getConnectionInfo()
+	sn, err := hi.getSubnet()
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +322,7 @@ func (hi *Interface) selectAddress(reqAddress net.IP, propTime time.Duration, xf
 
 // DelRoute deletes the /32 or /128 to the passed address
 func (hi *Interface) DelRoute(ip net.IP) error {
-	_, sn, err := hi.getConnectionInfo()
+	sn, err := hi.getSubnet()
 	if err != nil {
 		return err
 	}
