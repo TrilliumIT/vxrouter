@@ -29,6 +29,6 @@
     "unparam",
     "varcheck",
     "vet",
-	"vetshadow"
+    "vetshadow"
   ]
 }

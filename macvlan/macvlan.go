@@ -40,7 +40,8 @@ func NewMacvlan(name string, parent int) (*Macvlan, error) {
 	return &Macvlan{nl, log}, nil
 }
 
-// nolint dupl
+// FromName returns a Macvlan from an interface name
+// nolint: dupl
 func FromName(name string) (*Macvlan, error) {
 	log := log.WithField("Macvlan", name)
 	log.Debug("FromName")
@@ -54,7 +55,7 @@ func FromName(name string) (*Macvlan, error) {
 }
 
 // FromIndex returns a Macvlan from an interface index
-// nolint dupl
+// nolint: dupl
 func FromIndex(index int) (*Macvlan, error) {
 	log := log.WithField("Macvlan", index)
 	log.Debug("FromIndex")

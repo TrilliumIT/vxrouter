@@ -51,7 +51,7 @@ echo "Installing Dependencies..."
 $GOPATH/bin/dep ensure
 
 echo "Linting..."
-gometalinter --vendor --disable-all --enable=deadcode --enable=dupl --enable=errcheck --enable=gas --enable=goconst --enable=goimports --enable=golint --enable=gotype --enable=gotypex --enable=ineffassign --enable=interfacer --enable=maligned --enable=megacheck --enable=misspell --enable=nakedret --enable=safesql --enable=structcheck --enable=unconvert --enable=unparam --enable=varcheck --enable=vet --enable=vetshadow ./...
+gometalinter --vendor ./...
 
 
 echo "Building..."
