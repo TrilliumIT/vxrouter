@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -36,5 +37,18 @@ func getEnvIntWithDefault(val, opt string, def int) int { //nolint: unparam
 }
 
 func poolFromID(poolid string) string {
-	return strings.TrimPrefix(poolid, ipamDriverName+"_")
+	return strings.TrimPrefix(poolid, ipamDriverName+"/")
+}
+
+// IPNetFromReqInfo returns an an IPNet from an ipam request
+func IPNetFromReqInfo(poolid, reqAddr string) (*net.IPNet, error) {
+	_, n, err := net.ParseCIDR(poolFromID(poolid))
+	if err != nil {
+		return nil, err
+	}
+	n.IP = net.ParseIP(reqAddr)
+	if n.IP == nil {
+		return nil, fmt.Errorf("invalid requested address")
+	}
+	return n, nil
 }

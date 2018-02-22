@@ -47,7 +47,7 @@ func (d *Driver) RequestPool(r *gphipam.RequestPoolRequest) (*gphipam.RequestPoo
 	}
 
 	rpr := &gphipam.RequestPoolResponse{
-		PoolID: DriverName + "_" + r.Pool,
+		PoolID: DriverName + "/" + r.Pool,
 		Pool:   r.Pool,
 	}
 
@@ -64,6 +64,18 @@ func (d *Driver) ReleasePool(r *gphipam.ReleasePoolRequest) error {
 // RequestAddress calls the core function to connect and get an available address
 func (d *Driver) RequestAddress(r *gphipam.RequestAddressRequest) (*gphipam.RequestAddressResponse, error) {
 	d.log.WithField("r", r).Debug("RequestAddress()")
+
+	// Always respond with the gateway address if specified
+	// This is called on network create, and network create will fail if this returns an error
+	if r.Options["RequestAddressType"] == "com.docker.network.gateway" && r.Address != "" {
+		r, err := core.IPNetFromReqInfo(r.PoolID, r.Address)
+		if err != nil {
+			return nil, err
+		}
+		return &gphipam.RequestAddressResponse{
+			Address: r.String(),
+		}, nil
+	}
 
 	addr, err := d.core.ConnectAndGetAddress(r.Address, r.PoolID)
 	if err != nil {
