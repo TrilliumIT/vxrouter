@@ -10,13 +10,16 @@ import (
 	"github.com/vishvananda/netlink"
 
 	"github.com/TrilliumIT/iputil"
+	"github.com/TrilliumIT/vxrouter"
 	"github.com/TrilliumIT/vxrouter/macvlan"
 	"github.com/TrilliumIT/vxrouter/vxlan"
 )
 
 var (
-	rwm     = make(map[string]*sync.RWMutex)
-	rwmLock sync.Mutex
+	rwm              = make(map[string]*sync.RWMutex)
+	rwmLock          sync.Mutex
+	routeProto       = vxrouter.GetEnvIntWithDefault(vxrouter.EnvPrefix+"ROUTE_PROTO", "", vxrouter.DefaultRouteProto)
+	reqAddrSleepTime = time.Duration(vxrouter.GetEnvIntWithDefault(vxrouter.EnvPrefix+"REQ_ADDR_SLEEP", "", vxrouter.DefaultReqAddrSleepTimeMS)) * time.Millisecond
 )
 
 // Interface holds a vxlan and a host macvlan interface used for the gateway interface on a container network
@@ -172,25 +175,13 @@ func (hi *Interface) Delete() error {
 		return nil
 	}
 
-	sn, err := hi.getSubnet()
-	if err != nil {
-		hi.log.WithError(err).Debug("failed to get subnet for host interface")
-		return err
-	}
-
 	// if there are any other routes, don't delete
-	routes, err := netlink.RouteListFiltered(netlink.FAMILY_ALL, &netlink.Route{LinkIndex: hi.mvl.GetIndex()}, netlink.RT_FILTER_OIF)
+	routes, err := netlink.RouteListFiltered(netlink.FAMILY_ALL, &netlink.Route{LinkIndex: hi.mvl.GetIndex(), Protocol: routeProto}, netlink.RT_FILTER_OIF|netlink.RT_FILTER_PROTOCOL)
 	if err != nil {
 		hi.log.WithError(err).Error("failed to get routes")
 		return err
 	}
 	for _, r := range routes {
-		if r.Dst.IP.IsLinkLocalUnicast() {
-			continue
-		}
-		if iputil.SubnetEqualSubnet(r.Dst, sn) {
-			continue
-		}
 		hi.log.WithField("r.Dst", r.Dst.String()).Debug("other routes found on this device, not deleting")
 		return nil
 	}
@@ -228,6 +219,11 @@ func (hi *Interface) SelectAddress(reqAddress net.IP, propTime, respTime time.Du
 	var ip *net.IPNet
 	var err error
 
+	var sleepTime time.Duration
+	if reqAddress != nil {
+		sleepTime = reqAddrSleepTime
+	}
+
 	stop := time.Now().Add(respTime)
 	for time.Now().Before(stop) {
 		ip, err = hi.selectAddress(reqAddress, propTime, xf, xl)
@@ -238,9 +234,7 @@ func (hi *Interface) SelectAddress(reqAddress net.IP, propTime, respTime time.Du
 		if ip != nil {
 			break
 		}
-		if reqAddress != nil {
-			time.Sleep(100 * time.Millisecond)
-		}
+		time.Sleep(sleepTime)
 	}
 
 	if ip == nil {
@@ -289,6 +283,7 @@ func (hi *Interface) selectAddress(reqAddress net.IP, propTime time.Duration, xf
 	err = netlink.RouteAdd(&netlink.Route{
 		LinkIndex: hi.mvl.GetIndex(),
 		Dst:       addrOnly,
+		Protocol:  routeProto,
 	})
 	if err != nil {
 		log.WithError(err).Error("failed to add route")
@@ -332,5 +327,6 @@ func (hi *Interface) DelRoute(ip net.IP) error {
 	return netlink.RouteDel(&netlink.Route{
 		LinkIndex: hi.mvl.GetIndex(),
 		Dst:       addrOnly,
+		Protocol:  routeProto,
 	})
 }

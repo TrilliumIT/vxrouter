@@ -171,8 +171,8 @@ func (c *Core) ConnectAndGetAddress(addr, poolid string) (*net.IPNet, error) {
 	}
 
 	//exclude network and (normal) broadcast addresses by default
-	xf := getEnvIntWithDefault(envPrefix+"excludefirst", nr.Options["excludefirst"], 1)
-	xl := getEnvIntWithDefault(envPrefix+"excludelast", nr.Options["excludelast"], 1)
+	xf := vxrouter.GetEnvIntWithDefault(envPrefix+"excludefirst", nr.Options["excludefirst"], 1)
+	xl := vxrouter.GetEnvIntWithDefault(envPrefix+"excludelast", nr.Options["excludelast"], 1)
 
 	hi, err := host.GetOrCreateInterface(nr.Name, gw, nr.Options)
 	if err != nil {
