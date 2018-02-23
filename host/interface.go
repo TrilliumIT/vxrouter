@@ -19,7 +19,7 @@ var (
 	rwm              = make(map[string]*sync.RWMutex)
 	rwmLock          sync.Mutex
 	routeProto       = vxrouter.GetEnvIntWithDefault(vxrouter.EnvPrefix+"ROUTE_PROTO", "", vxrouter.DefaultRouteProto)
-	reqAddrSleepTime = time.Duration(vxrouter.GetEnvIntWithDefault(vxrouter.EnvPrefix+"REQ_ADDR_SLEEP", "", vxrouter.DefaultReqAddrSleepTimeMS)) * time.Millisecond
+	reqAddrSleepTime = vxrouter.GetEnvDurWithDefault(vxrouter.EnvPrefix+"REQ_ADDR_SLEEP", "", vxrouter.DefaultReqAddrSleepTime)
 )
 
 // Interface holds a vxlan and a host macvlan interface used for the gateway interface on a container network

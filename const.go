@@ -1,11 +1,15 @@
 package vxrouter
 
-// usefule constants for the whole project
+import (
+	"time"
+)
+
+// useful constants for the whole project
 const (
-	Version                   = "0.0.4"
-	EnvPrefix                 = "VXR_"
-	NetworkDriver             = "vxrNet"
-	IpamDriver                = "vxrIpam"
-	DefaultReqAddrSleepTimeMS = 100
-	DefaultRouteProto         = 192
+	Version                 = "0.0.5"
+	EnvPrefix               = "VXR_"
+	NetworkDriver           = "vxrNet"
+	IpamDriver              = "vxrIpam"
+	DefaultReqAddrSleepTime = 100 * time.Millisecond
+	DefaultRouteProto       = 192
 )
