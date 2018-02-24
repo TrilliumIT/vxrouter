@@ -3,7 +3,6 @@ package core
 import (
 	"fmt"
 	"net"
-	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -24,12 +23,17 @@ const (
 
 // Core is a wrapper for docker client type things
 type Core struct {
-	dc          *client.Client
-	propTime    time.Duration
-	respTime    time.Duration
-	nrByID      map[string]*types.NetworkResource
-	nrByPool    map[string]*types.NetworkResource
-	nrCacheLock *sync.RWMutex
+	dc       *client.Client
+	propTime time.Duration
+	respTime time.Duration
+	getNr    chan *getNr
+	delNr    chan string
+	putNr    chan *types.NetworkResource
+}
+
+type getNr struct {
+	s  string
+	rc chan<- *types.NetworkResource
 }
 
 // NewCore creates a new client
@@ -40,15 +44,51 @@ func NewCore(propTime, respTime time.Duration) (*Core, error) {
 	}
 
 	c := &Core{
-		dc:          dc,
-		propTime:    propTime,
-		respTime:    respTime,
-		nrByID:      make(map[string]*types.NetworkResource),
-		nrByPool:    make(map[string]*types.NetworkResource),
-		nrCacheLock: &sync.RWMutex{},
+		dc:       dc,
+		propTime: propTime,
+		respTime: respTime,
+		getNr:    make(chan *getNr),
+		delNr:    make(chan string),
+		putNr:    make(chan *types.NetworkResource),
 	}
 
+	go func() {
+		nrCache := make(map[string]*types.NetworkResource)
+		for {
+			select {
+			case rc := <-c.getNr:
+				rc.rc <- nrCache[rc.s]
+			case dn := <-c.delNr:
+				nr := nrCache[dn]
+				if nr == nil {
+					break
+				}
+				delete(nrCache, nr.ID)
+				pool, err := poolFromNR(nr)
+				if err != nil {
+					log.Debug("failed to get pool from network resource, not deleting")
+					break
+				}
+				delete(nrCache, pool)
+			case nr := <-c.putNr:
+				nrCache[nr.ID] = nr
+				pool, err := poolFromNR(nr)
+				if err != nil {
+					log.Debug("failed to get pool from network resource, not caching")
+					break
+				}
+				nrCache[pool] = nr
+			}
+		}
+	}()
+
 	return c, nil
+}
+
+func (c *Core) getNrFromCache(s string) *types.NetworkResource {
+	rc := make(chan *types.NetworkResource)
+	c.getNr <- &getNr{s, rc}
+	return <-rc
 }
 
 // GetContainers gets a list of docker containers
@@ -61,26 +101,22 @@ func (c *Core) GetNetworkResourceByID(id string) (*types.NetworkResource, error)
 	log := log.WithField("net_id", id)
 	log.Debug("GetNetworkResourceByID()")
 
-	//first check local cache with a read-only mutex
-	c.nrCacheLock.RLock()
-
-	if nr, ok := c.nrByID[id]; ok {
-		c.nrCacheLock.RUnlock()
+	nr := c.getNrFromCache(id)
+	if nr != nil {
 		return nr, nil
 	}
-	c.nrCacheLock.RUnlock()
 
 	//netid wasn't in cache, fetch from docker inspect
-	nr, err := c.dc.NetworkInspect(context.Background(), id)
+	nnr, err := c.dc.NetworkInspect(context.Background(), id)
 	if err != nil {
 		log.WithError(err).Error("failed to inspect network")
 		return nil, err
 	}
+	nr = &nnr
 
-	//add nr pointer to both caches
-	c.cacheNetworkResource(&nr)
+	c.putNr <- nr
 
-	return &nr, nil
+	return nr, nil
 }
 
 // GetNetworkResourceByPool gets a network resource by it's subnet
@@ -88,15 +124,10 @@ func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, er
 	log := log.WithField("pool", pool)
 	log.Debug("getNetworkResourceByPool")
 
-	//not sure of the performance implications of sharing a read lock between
-	//both caches, but we want them in lock step anyway, so likely a non-issue
-	c.nrCacheLock.RLock()
-
-	if nr, ok := c.nrByPool[pool]; ok {
-		c.nrCacheLock.RUnlock()
+	nr := c.getNrFromCache(pool)
+	if nr != nil {
 		return nr, nil
 	}
-	c.nrCacheLock.RUnlock()
 
 	flts := filters.NewArgs()
 	flts.Add("driver", networkDriverName)
@@ -106,7 +137,6 @@ func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, er
 		return nil, err
 	}
 
-	var nr *types.NetworkResource
 	for _, n := range nl {
 		nr, err = c.GetNetworkResourceByID(n.ID)
 		if err != nil {
@@ -123,30 +153,7 @@ func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, er
 
 // Uncache uncaches the network resources
 func (c *Core) Uncache(poolid string) {
-	c.nrCacheLock.Lock()
-	defer c.nrCacheLock.Unlock()
-	if _, ok := c.nrByPool[poolid]; !ok {
-		return
-	}
-	delete(c.nrByID, c.nrByPool[poolid].ID)
-	delete(c.nrByPool, poolid)
-}
-
-func (c *Core) cacheNetworkResource(nr *types.NetworkResource) {
-	log := log.WithField("nr.Name", nr.Name)
-	log.Debug("cacheNetworkResource()")
-
-	c.nrCacheLock.Lock()
-	defer c.nrCacheLock.Unlock()
-
-	pool, err := poolFromNR(nr)
-	if err != nil {
-		log.Debug("failed to get pool from network resource, not caching")
-		return
-	}
-
-	c.nrByID[nr.ID] = nr
-	c.nrByPool[pool] = nr
+	c.delNr <- poolid
 }
 
 // ConnectAndGetAddress connects the host to the network for the
