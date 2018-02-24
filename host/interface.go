@@ -38,12 +38,9 @@ func GetOrCreateInterface(name string, gateway *net.IPNet, opts map[string]strin
 	hi, _ := getInterface(name)
 	hi.log = log
 
-	hi.l.RLock()
 	if hi.vxl != nil && hi.mvl != nil && hi.mvl.HasAddress(gateway) {
-		hi.l.RUnlock()
 		return hi, nil
 	}
-	hi.l.RUnlock()
 	hi.l.Lock()
 	defer hi.l.Unlock()
 	hi, _ = getInterface(name)
@@ -187,8 +184,8 @@ func (hi *Interface) Delete() error {
 	}
 
 	rwmLock.Lock()
+	defer rwmLock.Unlock()
 	delete(rwm, hi.name)
-	rwmLock.Unlock()
 
 	return hi.vxl.Delete()
 }
