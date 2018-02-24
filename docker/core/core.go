@@ -154,7 +154,8 @@ func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, er
 
 // Uncache uncaches the network resources
 func (c *Core) Uncache(poolid string) {
-	c.delNr <- poolid
+	pool := poolFromID(poolid)
+	c.delNr <- pool
 }
 
 // ConnectAndGetAddress connects the host to the network for the
@@ -172,7 +173,7 @@ func (c *Core) ConnectAndGetAddress(addr, poolid string) (*net.IPNet, error) {
 		return nil, err
 	}
 
-	gw, err := c.GetGatewayByNetID(nr.ID)
+	gw, err := GatewayFromNR(nr)
 	if err != nil {
 		log.WithError(err).Error("failed to get gateway")
 		return nil, err
@@ -202,23 +203,7 @@ func (c *Core) GetGatewayByNetID(netid string) (*net.IPNet, error) {
 		log.WithError(err).WithField("NetworkID", netid).Error("failed to get network resource")
 		return nil, err
 	}
-
-	for _, ic := range nr.IPAM.Config {
-		gws := ic.Gateway
-		sns := ic.Subnet
-		if gws != "" && sns != "" {
-			gw := net.ParseIP(gws)
-			if gw == nil {
-				err = fmt.Errorf("failed to parse gateway from ipam config")
-				return nil, err
-			}
-			var sn *net.IPNet
-			_, sn, err = net.ParseCIDR(sns)
-			return &net.IPNet{IP: gw, Mask: sn.Mask}, err
-		}
-	}
-
-	return nil, fmt.Errorf("no gateway with subnet found in ipam config")
+	return GatewayFromNR(nr)
 }
 
 // GetGatewayByPoolID return the gateway by the poolid (I don't think I'm calling this anymore)
@@ -231,7 +216,7 @@ func (c *Core) GetGatewayByPoolID(poolid string) (*net.IPNet, error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.GetGatewayByNetID(nr.ID)
+	return GatewayFromNR(nr)
 }
 
 // CreateContainerInterface creates the macvlan to be put into a container namespace
@@ -247,7 +232,7 @@ func (c *Core) CreateContainerInterface(netid, endpointid string) (string, error
 		return "", err
 	}
 
-	gw, err := c.GetGatewayByNetID(nr.ID)
+	gw, err := GatewayFromNR(nr)
 	if err != nil {
 		log.WithError(err).Error("failed to get gateway")
 		return "", err

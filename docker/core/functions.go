@@ -33,3 +33,23 @@ func IPNetFromReqInfo(poolid, reqAddr string) (*net.IPNet, error) {
 	}
 	return n, nil
 }
+
+// GatewayFromNR loops over the IPAMConfig array, combine gw and sn into a cidr
+func GatewayFromNR(nr *types.NetworkResource) (*net.IPNet, error) {
+	for _, ic := range nr.IPAM.Config {
+		gws := ic.Gateway
+		sns := ic.Subnet
+		if gws != "" && sns != "" {
+			gw := net.ParseIP(gws)
+			if gw == nil {
+				err := fmt.Errorf("failed to parse gateway from ipam config")
+				return nil, err
+			}
+			var sn *net.IPNet
+			_, sn, err := net.ParseCIDR(sns)
+			return &net.IPNet{IP: gw, Mask: sn.Mask}, err
+		}
+	}
+
+	return nil, fmt.Errorf("no gateway with subnet found in ipam config")
+}
