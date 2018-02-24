@@ -52,37 +52,38 @@ func NewCore(propTime, respTime time.Duration) (*Core, error) {
 		putNr:    make(chan *types.NetworkResource),
 	}
 
-	go func() {
-		nrCache := make(map[string]*types.NetworkResource)
-		for {
-			select {
-			case rc := <-c.getNr:
-				rc.rc <- nrCache[rc.s]
-			case dn := <-c.delNr:
-				nr := nrCache[dn]
-				if nr == nil {
-					break
-				}
-				delete(nrCache, nr.ID)
-				pool, err := poolFromNR(nr)
-				if err != nil {
-					log.Debug("failed to get pool from network resource, not deleting")
-					break
-				}
-				delete(nrCache, pool)
-			case nr := <-c.putNr:
-				nrCache[nr.ID] = nr
-				pool, err := poolFromNR(nr)
-				if err != nil {
-					log.Debug("failed to get pool from network resource, not caching")
-					break
-				}
-				nrCache[pool] = nr
-			}
-		}
-	}()
-
+	go nrCacheLoop(c.getNr, c.delNr, c.putNr)
 	return c, nil
+}
+
+func nrCacheLoop(getNr <-chan *getNr, delNr <-chan string, putNr <-chan *types.NetworkResource) {
+	nrCache := make(map[string]*types.NetworkResource)
+	for {
+		select {
+		case rc := <-getNr:
+			rc.rc <- nrCache[rc.s]
+		case dn := <-delNr:
+			nr := nrCache[dn]
+			if nr == nil {
+				break
+			}
+			delete(nrCache, nr.ID)
+			pool, err := poolFromNR(nr)
+			if err != nil {
+				log.Debug("failed to get pool from network resource, not deleting")
+				break
+			}
+			delete(nrCache, pool)
+		case nr := <-putNr:
+			nrCache[nr.ID] = nr
+			pool, err := poolFromNR(nr)
+			if err != nil {
+				log.Debug("failed to get pool from network resource, not caching")
+				break
+			}
+			nrCache[pool] = nr
+		}
+	}
 }
 
 func (c *Core) getNrFromCache(s string) *types.NetworkResource {
