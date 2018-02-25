@@ -85,12 +85,7 @@ func linkIndexByName(name string) (int, error) {
 
 }
 
-// NewVxlan creates a new vxlan interface
-func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
-	v := new(vxlanName)
-	log := v.log.WithField("Func", "NewVxlan()")
-	log.Debug()
-
+func applyOpts(nl *netlink.Vxlan, opts map[string]string) (bool, error) {
 	var ok bool
 	keys := [...]string{"vxlanmtu", "vxlanhardwareaddr", "vxlantxqlen", "vxlanid", "vtepdev", "srcaddr", "group", "ttl", "tos", "learning", "proxy", "rsc", "l2miss", "l3miss", "noage", "gbp", "age", "limit", "port", "portlow", "porthigh", "vxlanhardwareaddr", "vxlanmtu"}
 
@@ -100,32 +95,18 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 		}
 	}
 
-	changed := false
-	new := false
-	nl, err := v.nl()
-
-	if err != nil {
-		new = true
-		nl = &netlink.Vxlan{
-			LinkAttrs: netlink.LinkAttrs{
-				Name: vxlanName,
-			},
-		}
-	}
+	var changed bool
+	var err error
 
 	// Parse interface options
 	for k, v := range opts {
 		var o, n string
 		log := log.WithField(k, v) // nolint: vetshadow
 		switch strings.ToLower(k) {
-		case "vxlanmtu":
-			o = strconv.Itoa(nl.LinkAttrs.MTU)
+		case "vxlanmtu": // don't check for change, can be changed after up
 			nl.LinkAttrs.MTU, err = strconv.Atoi(v)
-			n = strconv.Itoa(nl.LinkAttrs.MTU)
-		case "vxlanhardwareaddr":
-			o = nl.LinkAttrs.HardwareAddr.String()
+		case "vxlanhardwareaddr": // don't check for change, can be changed after up
 			nl.LinkAttrs.HardwareAddr, err = net.ParseMAC(v)
-			n = nl.LinkAttrs.HardwareAddr.String()
 		case "vxlantxqlen":
 			o = strconv.Itoa(nl.LinkAttrs.TxQLen)
 			nl.LinkAttrs.TxQLen, err = strconv.Atoi(v)
@@ -205,11 +186,43 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 		}
 		if err != nil {
 			log.WithError(err).Debug()
-			return nil, err
+			return changed, err
 		}
 		if o != n {
 			changed = true
 		}
+	}
+
+	return changed, nil
+}
+
+// NewVxlan creates a new vxlan interface
+func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
+	return newVxlan(vxlanName, opts, true)
+}
+
+func newVxlan(vxlanName string, opts map[string]string, retry bool) (*Vxlan, error) {
+	v := new(vxlanName)
+	log := v.log.WithField("Func", "NewVxlan()")
+	log.Debug()
+
+	new := false
+	nl, err := v.nl()
+
+	if err != nil {
+		new = true
+		nl = &netlink.Vxlan{
+			LinkAttrs: netlink.LinkAttrs{
+				Name: vxlanName,
+			},
+		}
+	}
+
+	var changed bool
+	changed, err = applyOpts(nl, opts)
+	if err != nil {
+		log.WithError(err).Debug()
+		return nil, err
 	}
 
 	if !new && changed {
@@ -221,7 +234,11 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 	if new {
 		err = netlink.LinkAdd(nl)
 		if err != nil {
-			log.Errorf("Error adding vxlan interface: %v", err)
+			if retry { // try again, in case another thread already brought it up
+				log.WithError(err).Debug("retrying")
+				return newVxlan(vxlanName, opts, false)
+			}
+			log.WithError(err).Debug("not retrying")
 			return nil, err
 		}
 	}
@@ -236,11 +253,17 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 			if err != nil {
 				break
 			}
+			if hardwareAddr.String() == nl.HardwareAddr.String() {
+				break
+			}
 			err = netlink.LinkSetHardwareAddr(nl, hardwareAddr)
 		case "vxlanmtu":
 			var mtu int
 			mtu, err = strconv.Atoi(v)
 			if err != nil {
+				break
+			}
+			if mtu == nl.MTU {
 				break
 			}
 			err = netlink.LinkSetMTU(nl, mtu)
