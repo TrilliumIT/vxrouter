@@ -19,7 +19,13 @@ const (
 	networkDriverName = vxrouter.NetworkDriver
 	ipamDriverName    = vxrouter.IpamDriver
 	envPrefix         = vxrouter.EnvPrefix
+	dockerTimeout     = 5 * time.Second
 )
+
+func toCtx() context.Context {
+	c, _ := context.WithTimeout(context.Background(), dockerTimeout)
+	return c
+}
 
 // Core is a wrapper for docker client type things
 type Core struct {
@@ -94,7 +100,7 @@ func (c *Core) getNrFromCache(s string) *types.NetworkResource {
 
 // GetContainers gets a list of docker containers
 func (c *Core) GetContainers() ([]types.Container, error) {
-	return c.dc.ContainerList(context.Background(), types.ContainerListOptions{})
+	return c.dc.ContainerList(toCtx(), types.ContainerListOptions{})
 }
 
 // GetNetworkResourceByID gets a network resource by ID (checks cache first)
@@ -108,7 +114,7 @@ func (c *Core) GetNetworkResourceByID(id string) (*types.NetworkResource, error)
 	}
 
 	//netid wasn't in cache, fetch from docker inspect
-	nnr, err := c.dc.NetworkInspect(context.Background(), id)
+	nnr, err := c.dc.NetworkInspect(toCtx(), id)
 	if err != nil {
 		log.WithError(err).Error("failed to inspect network")
 		return nil, err
@@ -132,7 +138,7 @@ func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, er
 
 	flts := filters.NewArgs()
 	flts.Add("driver", networkDriverName)
-	nl, err := c.dc.NetworkList(context.Background(), types.NetworkListOptions{Filters: flts})
+	nl, err := c.dc.NetworkList(toCtx(), types.NetworkListOptions{Filters: flts})
 	if err != nil {
 		log.WithError(err).Error("failed to list networks")
 		return nil, err

@@ -21,9 +21,15 @@ import (
 )
 
 const (
-	version   = vxrouter.Version
-	envPrefix = vxrouter.EnvPrefix
+	version         = vxrouter.Version
+	envPrefix       = vxrouter.EnvPrefix
+	shutdownTimeout = 10 * time.Second
 )
+
+func shutdownContext() context.Context {
+	c, _ := context.WithTimeout(context.Background(), shutdownTimeout)
+	return c
+}
 
 func main() {
 	app := cli.NewApp()
@@ -115,12 +121,12 @@ func Run(ctx *cli.Context) {
 	case <-c:
 	}
 
-	err = nh.Shutdown(context.Background())
+	err = nh.Shutdown(shutdownContext())
 	if err != nil {
 		log.WithField("driver", network.DriverName).WithError(err).Error("error shutting down driver")
 	}
 
-	err = ih.Shutdown(context.Background())
+	err = ih.Shutdown(shutdownContext())
 	if err != nil {
 		log.WithField("driver", ipam.DriverName).WithError(err).Error("error shutting down driver")
 	}
