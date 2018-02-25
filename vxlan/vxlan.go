@@ -20,8 +20,35 @@ const (
 
 // Vxlan is a vxlan interface
 type Vxlan struct {
-	nl  *netlink.Vxlan
-	log *log.Entry
+	name string
+	log  *log.Entry
+}
+
+func new(name string) *Vxlan {
+	log := log.WithField("Vxlan", name)
+	log.WithField("Func", "new()").Debug()
+	return &Vxlan{name, log}
+}
+
+func (v *Vxlan) nl() (*netlink.Vxlan, error) {
+	log := v.log.WithField("Func", "nl()")
+	log.Debug()
+
+	link, err := netlink.LinkByName(v.name)
+	if err != nil {
+		log.WithError(err).Debug("failed to get link by name")
+		return nil, err
+	}
+
+	return checkNl(link)
+}
+
+func checkNl(link netlink.Link) (*netlink.Vxlan, error) {
+	if nl, ok := link.(*netlink.Vxlan); ok {
+		return nl, nil
+	}
+
+	return nil, fmt.Errorf("link is not a vxlan")
 }
 
 func parseIP(s string) (net.IP, error) {
@@ -60,7 +87,10 @@ func linkIndexByName(name string) (int, error) {
 
 // NewVxlan creates a new vxlan interface
 func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
-	log := log.WithField("Vxlan", vxlanName)
+	v := new(vxlanName)
+	log := v.log.WithField("Func", "NewVxlan()")
+	log.Debug()
+
 	var ok bool
 	keys := [...]string{"vxlanmtu", "vxlanhardwareaddr", "vxlantxqlen", "vxlanid", "vtepdev", "srcaddr", "group", "ttl", "tos", "learning", "proxy", "rsc", "l2miss", "l3miss", "noage", "gbp", "age", "limit", "port", "portlow", "porthigh", "vxlanhardwareaddr", "vxlanmtu"}
 
@@ -70,70 +100,130 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 		}
 	}
 
-	nl := &netlink.Vxlan{
-		LinkAttrs: netlink.LinkAttrs{
-			Name: vxlanName,
-		},
+	changed := false
+	new := false
+	nl, err := v.nl()
+
+	if err != nil {
+		new = true
+		nl = &netlink.Vxlan{
+			LinkAttrs: netlink.LinkAttrs{
+				Name: vxlanName,
+			},
+		}
 	}
 
 	// Parse interface options
-	var err error
 	for k, v := range opts {
+		var o, n string
 		log := log.WithField(k, v) // nolint: vetshadow
 		switch strings.ToLower(k) {
 		case "vxlanmtu":
+			o = strconv.Itoa(nl.LinkAttrs.MTU)
 			nl.LinkAttrs.MTU, err = strconv.Atoi(v)
+			n = strconv.Itoa(nl.LinkAttrs.MTU)
 		case "vxlanhardwareaddr":
+			o = nl.LinkAttrs.HardwareAddr.String()
 			nl.LinkAttrs.HardwareAddr, err = net.ParseMAC(v)
+			n = nl.LinkAttrs.HardwareAddr.String()
 		case "vxlantxqlen":
+			o = strconv.Itoa(nl.LinkAttrs.TxQLen)
 			nl.LinkAttrs.TxQLen, err = strconv.Atoi(v)
+			n = strconv.Itoa(nl.LinkAttrs.TxQLen)
 		case "vxlanid":
+			o = strconv.Itoa(nl.VxlanId)
 			nl.VxlanId, err = ParseVxlanID(v)
+			n = strconv.Itoa(nl.VxlanId)
 		case "vtepdev":
+			o = strconv.Itoa(nl.VtepDevIndex)
 			nl.VtepDevIndex, err = linkIndexByName(v)
+			n = strconv.Itoa(nl.VtepDevIndex)
 		case "srcaddr":
+			o = nl.SrcAddr.String()
 			nl.SrcAddr, err = parseIP(v)
+			n = nl.SrcAddr.String()
 		case "group":
+			o = nl.Group.String()
 			nl.Group = net.ParseIP(v)
+			n = nl.Group.String()
 		case "ttl":
+			o = strconv.Itoa(nl.TTL)
 			nl.TTL, err = strconv.Atoi(v)
+			n = strconv.Itoa(nl.TTL)
 		case "tos":
+			o = strconv.Itoa(nl.TOS)
 			nl.TOS, err = strconv.Atoi(v)
+			n = strconv.Itoa(nl.TOS)
 		case "learning":
+			o = strconv.FormatBool(nl.Learning)
 			nl.Learning, err = strconv.ParseBool(v)
+			n = strconv.FormatBool(nl.Learning)
 		case "proxy":
+			o = strconv.FormatBool(nl.Proxy)
 			nl.Proxy, err = strconv.ParseBool(v)
+			n = strconv.FormatBool(nl.Proxy)
 		case "rsc":
+			o = strconv.FormatBool(nl.RSC)
 			nl.RSC, err = strconv.ParseBool(v)
+			n = strconv.FormatBool(nl.RSC)
 		case "l2miss":
+			o = strconv.FormatBool(nl.L2miss)
 			nl.L2miss, err = strconv.ParseBool(v)
+			n = strconv.FormatBool(nl.L2miss)
 		case "l3miss":
+			o = strconv.FormatBool(nl.L3miss)
 			nl.L3miss, err = strconv.ParseBool(v)
+			n = strconv.FormatBool(nl.L3miss)
 		case "noage":
+			o = strconv.FormatBool(nl.NoAge)
 			nl.NoAge, err = strconv.ParseBool(v)
+			n = strconv.FormatBool(nl.NoAge)
 		case "gbp":
+			o = strconv.FormatBool(nl.GBP)
 			nl.GBP, err = strconv.ParseBool(v)
+			n = strconv.FormatBool(nl.GBP)
 		case "age":
+			o = strconv.Itoa(nl.Age)
 			nl.Age, err = strconv.Atoi(v)
+			n = strconv.Itoa(nl.Age)
 		case "limit":
+			o = strconv.Itoa(nl.Limit)
 			nl.Limit, err = strconv.Atoi(v)
+			n = strconv.Itoa(nl.Limit)
 		case "port":
+			o = strconv.Itoa(nl.Port)
 			nl.Port, err = strconv.Atoi(v)
+			n = strconv.Itoa(nl.Port)
 		case "portlow":
+			o = strconv.Itoa(nl.PortLow)
 			nl.PortLow, err = strconv.Atoi(v)
+			n = strconv.Itoa(nl.PortLow)
 		case "porthigh":
+			o = strconv.Itoa(nl.PortHigh)
 			nl.PortHigh, err = strconv.Atoi(v)
+			n = strconv.Itoa(nl.PortHigh)
 		}
 		if err != nil {
 			log.WithError(err).Debug()
 			return nil, err
 		}
+		if o != n {
+			changed = true
+		}
 	}
 
-	err = netlink.LinkAdd(nl)
-	if err != nil {
-		log.Errorf("Error adding vxlan interface: %v", err)
+	if !new && changed {
+		err := fmt.Errorf("vxlan interface already exists with wrong attributes")
+		log.WithError(err).Debug()
 		return nil, err
+	}
+
+	if new {
+		err = netlink.LinkAdd(nl)
+		if err != nil {
+			log.Errorf("Error adding vxlan interface: %v", err)
+			return nil, err
+		}
 	}
 
 	// Parse interface options
@@ -168,44 +258,54 @@ func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
 		return nil, err
 	}
 
-	return &Vxlan{nl, log}, nil
+	return v, nil
 }
 
 // FromName gets a vxlan interface by name
 func FromName(name string) (*Vxlan, error) {
-	log := log.WithField("Vxlan", name)
-	log.Debug("GetVxlan")
+	v := new(name)
+	log := v.log.WithField("Func", "FromName()")
+	log.Debug()
 
-	link, err := netlink.LinkByName(name)
+	_, err := v.nl()
 	if err != nil {
-		log.WithError(err).Debug("error getting link by name")
-		return nil, err
+		log.WithError(err).Debug()
 	}
 
-	if nl, ok := link.(*netlink.Vxlan); ok {
-		return &Vxlan{nl, log}, nil
-	}
-
-	log.Debug("link is not a vxlan")
-	return nil, fmt.Errorf("link is not a vxlan")
+	return v, nil
 }
 
 // CreateMacvlan creates a macvlan as a slave to v
 func (v *Vxlan) CreateMacvlan(name string) (*macvlan.Macvlan, error) {
-	v.log.Debug("CreateMacVlan")
-	return macvlan.NewMacvlan(name, v.nl.LinkAttrs.Index)
+	log := v.log.WithField("Func", "CreateMacvlan()")
+	log.Debug()
+
+	nl, err := v.nl()
+	if err != nil {
+		log.WithError(err).Debug()
+	}
+
+	return macvlan.NewMacvlan(name, nl.LinkAttrs.Index)
 }
 
 // DeleteMacvlan deletes the slave macvlan interface by name
 func (v *Vxlan) DeleteMacvlan(name string) error {
-	v.log.Debug("DeleteMacvlan")
+	log := v.log.WithField("Func", "DeleteMacvlan()")
+	log.Debug()
 
-	mvl, err := macvlan.FromName(name)
+	nl, err := v.nl()
 	if err != nil {
+		log.WithError(err).Debug()
 		return err
 	}
 
-	if v.nl.Index != mvl.GetParentIndex() {
+	mvl, err := macvlan.FromName(name)
+	if err != nil {
+		log.WithError(err).Debug()
+		return err
+	}
+
+	if nl.Index != mvl.GetParentIndex() {
 		return fmt.Errorf("macvlan is not a child of this vxlan")
 	}
 
@@ -215,13 +315,23 @@ func (v *Vxlan) DeleteMacvlan(name string) error {
 // Delete deletes the vxlan interface.
 // Any child macvlans will automatically be deleted by the kernel.
 func (v *Vxlan) Delete() error {
-	v.log.Debug("Delete")
-	return netlink.LinkDel(v.nl)
+	log := v.log.WithField("Func", "Delete()")
+	log.Debug()
+
+	nl, err := v.nl()
+	if err != nil {
+		log.WithError(err).Debug("link doesn't exist, nothing to delete")
+		return nil
+	}
+
+	return netlink.LinkDel(nl)
 }
 
 // GetMacVlans returns all slave macvlan interfaces
 func (v *Vxlan) GetMacVlans() ([]*macvlan.Macvlan, error) {
-	v.log.Debug("GetMacVlans")
+	log := v.log.WithField("Func", "GetMacVlans()")
+	log.Debug()
+
 	r := []*macvlan.Macvlan{}
 
 	allSlaves, err := v.GetSlaveDevices()
@@ -242,7 +352,15 @@ func (v *Vxlan) GetMacVlans() ([]*macvlan.Macvlan, error) {
 
 // GetSlaveDevices gets all slave devices, including macvlans, but possibly others
 func (v *Vxlan) GetSlaveDevices() ([]netlink.Link, error) {
-	v.log.Debug("GetSlaveDevices")
+	log := v.log.WithField("Func", "GetSlaveDevices()")
+	log.Debug()
+
+	nl, err := v.nl()
+	if err != nil {
+		log.WithError(err).Debug()
+		return nil, err
+	}
+
 	r := []netlink.Link{}
 
 	allLinks, err := netlink.LinkList()
@@ -252,7 +370,7 @@ func (v *Vxlan) GetSlaveDevices() ([]netlink.Link, error) {
 	}
 
 	for _, link := range allLinks {
-		if link.Attrs().MasterIndex != v.nl.Attrs().Index {
+		if link.Attrs().MasterIndex != nl.Attrs().Index {
 			continue
 		}
 		r = append(r, link)

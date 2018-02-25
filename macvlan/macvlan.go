@@ -14,6 +14,12 @@ type Macvlan struct {
 	log  *log.Entry
 }
 
+func new(name string) *Macvlan {
+	log := log.WithField("Macvlan", name)
+	log.WithField("Func", "new()").Debug()
+	return &Macvlan{name, log}
+}
+
 func (m *Macvlan) nl() (*netlink.Macvlan, error) {
 	log := m.log.WithField("Func", "nl()")
 	log.Debug()
@@ -33,12 +39,6 @@ func checkNl(link netlink.Link) (*netlink.Macvlan, error) {
 	}
 
 	return nil, fmt.Errorf("link is not a macvlan")
-}
-
-func new(name string) *Macvlan {
-	log := log.WithField("Macvlan", name)
-	log.WithField("Func", "new()").Debug()
-	return &Macvlan{name, log}
 }
 
 // NewMacvlan creates a macvlan interface, under the parent interface index
