@@ -26,11 +26,6 @@ const (
 	shutdownTimeout = 10 * time.Second
 )
 
-func shutdownContext() context.Context {
-	c, _ := context.WithTimeout(context.Background(), shutdownTimeout)
-	return c
-}
-
 func main() {
 	app := cli.NewApp()
 	app.Name = "docker-" + network.DriverName
@@ -121,12 +116,16 @@ func Run(ctx *cli.Context) {
 	case <-c:
 	}
 
-	err = nh.Shutdown(shutdownContext())
+	nhCtx, nhCtxCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer nhCtxCancel()
+	err = nh.Shutdown(nhCtx)
 	if err != nil {
 		log.WithField("driver", network.DriverName).WithError(err).Error("error shutting down driver")
 	}
 
-	err = ih.Shutdown(shutdownContext())
+	ihCtx, ihCtxCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer ihCtxCancel()
+	err = ih.Shutdown(ihCtx)
 	if err != nil {
 		log.WithField("driver", ipam.DriverName).WithError(err).Error("error shutting down driver")
 	}
