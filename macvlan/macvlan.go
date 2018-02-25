@@ -20,7 +20,7 @@ func new(name string) *Macvlan {
 	return &Macvlan{name, log}
 }
 
-func (m *Macvlan) nl() (*netlink.Macvlan, error) {
+func (m *Macvlan) nl() (*netlink.Macvlan, error) { // nolint: dupl
 	log := m.log.WithField("Func", "nl()")
 	log.Debug()
 
@@ -41,8 +41,8 @@ func checkNl(link netlink.Link) (*netlink.Macvlan, error) {
 	return nil, fmt.Errorf("link is not a macvlan")
 }
 
-// NewMacvlan creates a macvlan interface, under the parent interface index
-func NewMacvlan(name string, parent int) (*Macvlan, error) {
+// New creates a macvlan interface, under the parent interface index
+func New(name string, parent int) (*Macvlan, error) {
 	m := new(name)
 	log := m.log.WithField("Func", "NewMacvlan()")
 	log.Debug()
@@ -81,8 +81,7 @@ func NewMacvlan(name string, parent int) (*Macvlan, error) {
 }
 
 // FromName returns a Macvlan from an interface name
-// nolint: dupl
-func FromName(name string) (*Macvlan, error) {
+func FromName(name string) (*Macvlan, error) { // nolint: dupl
 	m := new(name)
 	log := m.log.WithField("Func", "FromName()")
 	log.Debug()
@@ -95,8 +94,7 @@ func FromName(name string) (*Macvlan, error) {
 }
 
 // FromLink returns a Macvlan from an interface link
-// nolint: dupl
-func FromLink(link netlink.Link) (*Macvlan, error) {
+func FromLink(link netlink.Link) (*Macvlan, error) { // nolint: dupl
 	m := new(link.Attrs().Name)
 	log := m.log.WithField("Func", "FromLink()")
 	log.Debug()
@@ -135,7 +133,7 @@ func (m *Macvlan) Delete() error {
 
 	// verify a parent interface isn't being deleted
 	if nl.Attrs().ParentIndex == 0 {
-		err := fmt.Errorf("interface is not a slave")
+		err = fmt.Errorf("interface is not a slave")
 		log.WithError(err).Debug()
 		return err
 	}
@@ -187,7 +185,7 @@ func (m *Macvlan) HasAddress(addr *net.IPNet) bool {
 }
 
 // GetParentIndex returns the index of the parent interface
-func (m *Macvlan) GetParentIndex() int {
+func (m *Macvlan) GetParentIndex() int { //nolint: dupl
 	log := m.log.WithField("Func", "GetParentIndex()")
 	log.Debug()
 
@@ -200,7 +198,7 @@ func (m *Macvlan) GetParentIndex() int {
 }
 
 // GetIndex returns the index of the interface
-func (m *Macvlan) GetIndex() int {
+func (m *Macvlan) GetIndex() int { // nolint: dupl
 	log := m.log.WithField("Func", "GetParentIndex()")
 	log.Debug()
 

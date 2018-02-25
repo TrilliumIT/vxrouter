@@ -30,7 +30,7 @@ func new(name string) *Vxlan {
 	return &Vxlan{name, log}
 }
 
-func (v *Vxlan) nl() (*netlink.Vxlan, error) {
+func (v *Vxlan) nl() (*netlink.Vxlan, error) { // nolint: dupl
 	log := v.log.WithField("Func", "nl()")
 	log.Debug()
 
@@ -196,8 +196,8 @@ func applyOpts(nl *netlink.Vxlan, opts map[string]string) (bool, error) {
 	return changed, nil
 }
 
-// NewVxlan creates a new vxlan interface
-func NewVxlan(vxlanName string, opts map[string]string) (*Vxlan, error) {
+// New creates a new vxlan interface
+func New(vxlanName string, opts map[string]string) (*Vxlan, error) {
 	return newVxlan(vxlanName, opts, true)
 }
 
@@ -226,7 +226,7 @@ func newVxlan(vxlanName string, opts map[string]string, retry bool) (*Vxlan, err
 	}
 
 	if !new && changed {
-		err := fmt.Errorf("vxlan interface already exists with wrong attributes")
+		err = fmt.Errorf("vxlan interface already exists with wrong attributes")
 		log.WithError(err).Debug()
 		return nil, err
 	}
@@ -308,7 +308,7 @@ func (v *Vxlan) CreateMacvlan(name string) (*macvlan.Macvlan, error) {
 		log.WithError(err).Debug()
 	}
 
-	return macvlan.NewMacvlan(name, nl.LinkAttrs.Index)
+	return macvlan.New(name, nl.LinkAttrs.Index)
 }
 
 // DeleteMacvlan deletes the slave macvlan interface by name

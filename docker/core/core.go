@@ -304,7 +304,7 @@ func (c *Core) CheckAndDeleteInterface(hi *host.Interface, netName, address stri
 		}
 	}
 
-	if err = hi.Delete(); err != nil {
+	if err = hi.UnsafeDelete(); err != nil {
 		log.WithError(err).Error("failed to delete host interface")
 	}
 }

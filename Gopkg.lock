@@ -20,20 +20,6 @@
   revision = "f92091035398c01d9edf7871ad5695e53ffb4d8b"
 
 [[projects]]
-  name = "github.com/TrilliumIT/vxrouter"
-  packages = [
-    ".",
-    "docker/core",
-    "docker/ipam",
-    "docker/network",
-    "host",
-    "macvlan",
-    "vxlan"
-  ]
-  revision = "4342c67f0c14fbbc4f95e1c05edf455802e7be51"
-  version = "v0.0.5"
-
-[[projects]]
   name = "github.com/coreos/go-systemd"
   packages = ["activation"]
   revision = "40e2722dffead74698ca12a750f64ef313ddce05"
@@ -153,6 +139,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a1ac51eb2ef802b540e0cce3967b4f4673b71931400082856098d0d20d709328"
+  inputs-digest = "3ac2adc33591727587fb9b1f05518ed413f1fc15d4333d54be43509c68607672"
   solver-name = "gps-cdcl"
   solver-version = 1
