@@ -283,8 +283,6 @@ func (c *Core) DeleteContainerInterface(netid, endpointid string) error {
 
 // CheckAndDeleteInterface checks the host interface for running containers, and if non, deletes it
 func (c *Core) CheckAndDeleteInterface(hi *host.Interface, netName, address string) {
-	hi.Lock()
-	defer hi.Unlock()
 
 	containers, err := c.GetContainers()
 	if err != nil {
@@ -304,7 +302,7 @@ func (c *Core) CheckAndDeleteInterface(hi *host.Interface, netName, address stri
 		}
 	}
 
-	if err = hi.UnsafeDelete(); err != nil {
+	if err = hi.Delete(); err != nil {
 		log.WithError(err).Error("failed to delete host interface")
 	}
 }

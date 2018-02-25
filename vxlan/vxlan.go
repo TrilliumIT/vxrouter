@@ -293,6 +293,7 @@ func FromName(name string) (*Vxlan, error) {
 	_, err := v.nl()
 	if err != nil {
 		log.WithError(err).Debug()
+		return nil, err
 	}
 
 	return v, nil
