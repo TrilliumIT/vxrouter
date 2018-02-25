@@ -64,6 +64,11 @@ func NewMacvlan(name string, parent int) (*Macvlan, error) {
 		if err2 != nil { // add and get failed, return first error
 			return nil, err
 		}
+		if nl.ParentIndex != parent {
+			err = fmt.Errorf("macvlan already exists with wrong parent")
+			log.WithError(err).Debug()
+			return nil, err
+		}
 	}
 
 	if err := netlink.LinkSetUp(nl); err != nil {
