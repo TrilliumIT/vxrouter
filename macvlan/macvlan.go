@@ -10,14 +10,43 @@ import (
 
 // Macvlan is a macvlan interface, for either a host or a container
 type Macvlan struct {
-	nl  *netlink.Macvlan
-	log *log.Entry
+	name string
+	log  *log.Entry
+}
+
+func (m *Macvlan) nl() (*netlink.Macvlan, error) {
+	log := m.log.WithField("Func", "nl()")
+	log.Debug()
+
+	link, err := netlink.LinkByName(m.name)
+	if err != nil {
+		log.WithError(err).Debug("failed to get link by name")
+		return nil, err
+	}
+
+	return checkNl(link)
+}
+
+func checkNl(link netlink.Link) (*netlink.Macvlan, error) {
+	if nl, ok := link.(*netlink.Macvlan); ok {
+		return nl, nil
+	}
+
+	return nil, fmt.Errorf("link is not a macvlan")
+}
+
+func new(name string) *Macvlan {
+	log := log.WithField("Macvlan", name)
+	log.WithField("Func", "new()").Debug()
+	return &Macvlan{name, log}
 }
 
 // NewMacvlan creates a macvlan interface, under the parent interface index
 func NewMacvlan(name string, parent int) (*Macvlan, error) {
-	log := log.WithField("Macvlan", name)
-	log.Debug("NewMacvlan")
+	m := new(name)
+	log := m.log.WithField("Func", "NewMacvlan()")
+	log.Debug()
+
 	// Create a macvlan link
 	nl := &netlink.Macvlan{
 		LinkAttrs: netlink.LinkAttrs{
@@ -28,7 +57,13 @@ func NewMacvlan(name string, parent int) (*Macvlan, error) {
 	}
 	if err := netlink.LinkAdd(nl); err != nil {
 		log.WithError(err).Debug("error adding link")
-		return nil, err
+
+		// Just in case add failed due to add succeeding from another thread
+		var err2 error
+		nl, err2 = m.nl()
+		if err2 != nil { // add and get failed, return first error
+			return nil, err
+		}
 	}
 
 	if err := netlink.LinkSetUp(nl); err != nil {
@@ -37,81 +72,87 @@ func NewMacvlan(name string, parent int) (*Macvlan, error) {
 	}
 	log.Debug("Brought up macvlan")
 
-	return &Macvlan{nl, log}, nil
+	return m, nil
 }
 
 // FromName returns a Macvlan from an interface name
 // nolint: dupl
 func FromName(name string) (*Macvlan, error) {
-	log := log.WithField("Macvlan", name)
-	log.Debug("FromName")
-	link, err := netlink.LinkByName(name)
+	m := new(name)
+	log := m.log.WithField("Func", "FromName()")
+	log.Debug()
+
+	_, err := m.nl()
 	if err != nil {
-		log.WithError(err).Debug("failed to get link by name")
 		return nil, err
 	}
-
-	return FromLink(link)
-}
-
-// FromIndex returns a Macvlan from an interface index
-// nolint: dupl
-func FromIndex(index int) (*Macvlan, error) {
-	log := log.WithField("Macvlan", index)
-	log.Debug("FromIndex")
-	link, err := netlink.LinkByIndex(index)
-	if err != nil {
-		log.WithError(err).Debug("failed to get link by index")
-		return nil, err
-	}
-
-	return FromLink(link)
+	return m, nil
 }
 
 // FromLink returns a Macvlan from an interface link
 // nolint: dupl
 func FromLink(link netlink.Link) (*Macvlan, error) {
-	log := log.WithField("Macvlan", link.Attrs().Name)
-	log.Debug("FromLink")
-	if nl, ok := link.(*netlink.Macvlan); ok {
-		return &Macvlan{nl, log}, nil
+	m := new(link.Attrs().Name)
+	log := m.log.WithField("Func", "FromLink()")
+	log.Debug()
+
+	_, err := checkNl(link)
+	if err != nil {
+		log.WithError(err).Debug()
+		return nil, err
 	}
-
-	err := fmt.Errorf("link is not a macvlan")
-	log.WithError(err).Debug()
-	return nil, err
-}
-
-// Equals determines if m and m2 are the same interface
-func (m *Macvlan) Equals(m2 *Macvlan) bool {
-	return m.nl.Attrs().Index == m2.nl.Attrs().Index
+	return m, nil
 }
 
 // AddAddress adds an ip address to a Macvlan interface
 func (m *Macvlan) AddAddress(addr *net.IPNet) error {
-	m.log.Debug("AddAddress")
-	return netlink.AddrAdd(m.nl, &netlink.Addr{IPNet: addr})
+	log := m.log.WithField("Func", "AddAddress()")
+	log.Debug()
+
+	nl, err := m.nl()
+	if err != nil {
+		log.WithError(err).Debug()
+		return err
+	}
+	return netlink.AddrAdd(nl, &netlink.Addr{IPNet: addr})
 }
 
 // Delete deletes a Macvlan interface
 func (m *Macvlan) Delete() error {
-	m.log.Debug("Delete")
+	log := m.log.WithField("Func", "Delete()")
+	log.Debug()
+
+	nl, err := m.nl()
+	if err != nil {
+		log.WithError(err).Debug("link doesn't exist, nothing to delete")
+		return nil
+	}
 
 	// verify a parent interface isn't being deleted
-	if m.nl.Attrs().ParentIndex == 0 {
+	if nl.Attrs().ParentIndex == 0 {
 		err := fmt.Errorf("interface is not a slave")
-		m.log.WithError(err).Error()
+		log.WithError(err).Debug()
 		return err
 	}
 
 	// delete the macvlan slave device
-	return netlink.LinkDel(m.nl)
+	return netlink.LinkDel(nl)
 }
 
 // GetAddresses returns IP Addresses on a Macvlan interface
 func (m *Macvlan) GetAddresses() ([]*net.IPNet, error) {
-	addrs, err := netlink.AddrList(m.nl, 0)
+	log := m.log.WithField("Func", "GetAddresses()")
+	log.Debug()
+
+	nl, err := m.nl()
 	if err != nil {
+		log.WithError(err).Debug()
+		return nil, err
+	}
+
+	addrs, err := netlink.AddrList(nl, 0)
+	if err != nil {
+		log.WithError(err).Debug()
 		return nil, err
 	}
 	r := []*net.IPNet{}
@@ -123,9 +164,12 @@ func (m *Macvlan) GetAddresses() ([]*net.IPNet, error) {
 
 // HasAddress returns true if addr is bound to the Macvlan interface
 func (m *Macvlan) HasAddress(addr *net.IPNet) bool {
+	log := m.log.WithField("Func", "HasAddress()")
+	log.Debug()
+
 	addrs, err := m.GetAddresses()
 	if err != nil {
-		log.WithError(err).Warn("err getting macvlan addresses")
+		log.WithError(err).Debug()
 	}
 
 	for _, a := range addrs {
@@ -139,12 +183,26 @@ func (m *Macvlan) HasAddress(addr *net.IPNet) bool {
 
 // GetParentIndex returns the index of the parent interface
 func (m *Macvlan) GetParentIndex() int {
-	m.log.Debug("GetParentIndex")
-	return m.nl.Attrs().ParentIndex
+	log := m.log.WithField("Func", "GetParentIndex()")
+	log.Debug()
+
+	nl, err := m.nl()
+	if err != nil {
+		log.WithError(err).Debug()
+		return 0
+	}
+	return nl.Attrs().ParentIndex
 }
 
 // GetIndex returns the index of the interface
 func (m *Macvlan) GetIndex() int {
-	m.log.Debug("GetIndex")
-	return m.nl.Attrs().Index
+	log := m.log.WithField("Func", "GetParentIndex()")
+	log.Debug()
+
+	nl, err := m.nl()
+	if err != nil {
+		log.WithError(err).Debug()
+		return 0
+	}
+	return nl.Attrs().Index
 }
