@@ -306,6 +306,7 @@ func (v *Vxlan) CreateMacvlan(name string) (*macvlan.Macvlan, error) {
 	nl, err := v.nl()
 	if err != nil {
 		log.WithError(err).Debug()
+		return nil, err
 	}
 
 	return macvlan.New(name, nl.LinkAttrs.Index)
