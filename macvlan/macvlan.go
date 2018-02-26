@@ -14,9 +14,9 @@ type Macvlan struct {
 	log  *log.Entry
 }
 
-func new(name string) *Macvlan {
+func fromName(name string) *Macvlan {
 	log := log.WithField("Macvlan", name)
-	log.WithField("Func", "new()").Debug()
+	log.WithField("Func", "fromName()").Debug()
 	return &Macvlan{name, log}
 }
 
@@ -43,8 +43,8 @@ func checkNl(link netlink.Link) (*netlink.Macvlan, error) {
 
 // New creates a macvlan interface, under the parent interface index
 func New(name string, parent int) (*Macvlan, error) {
-	m := new(name)
-	log := m.log.WithField("Func", "NewMacvlan()")
+	m := fromName(name)
+	log := m.log.WithField("Func", "New()")
 	log.Debug()
 
 	// Create a macvlan link
@@ -82,7 +82,7 @@ func New(name string, parent int) (*Macvlan, error) {
 
 // FromName returns a Macvlan from an interface name
 func FromName(name string) (*Macvlan, error) { // nolint: dupl
-	m := new(name)
+	m := fromName(name)
 	log := m.log.WithField("Func", "FromName()")
 	log.Debug()
 
@@ -93,9 +93,19 @@ func FromName(name string) (*Macvlan, error) { // nolint: dupl
 	return m, nil
 }
 
+// FromLinkIndex returns a Macvlan from an interface name
+func FromLinkIndex(li int) (*Macvlan, error) { // nolint: dupl
+	l, err := netlink.LinkByIndex(li)
+	if err != nil {
+		return nil, err
+	}
+
+	return FromLink(l)
+}
+
 // FromLink returns a Macvlan from an interface link
 func FromLink(link netlink.Link) (*Macvlan, error) { // nolint: dupl
-	m := new(link.Attrs().Name)
+	m := fromName(link.Attrs().Name)
 	log := m.log.WithField("Func", "FromLink()")
 	log.Debug()
 
@@ -208,4 +218,9 @@ func (m *Macvlan) GetIndex() int { // nolint: dupl
 		return 0
 	}
 	return nl.Attrs().Index
+}
+
+// Name returns the name
+func (m *Macvlan) Name() string {
+	return m.name
 }

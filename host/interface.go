@@ -422,3 +422,43 @@ func (hi *Interface) DelRoute(ip net.IP) error {
 		Protocol:  routeProto,
 	})
 }
+
+// GetInterfaceFromDestinationAddress gets an interface from a host route destination
+func GetInterfaceFromDestinationAddress(address net.IP) (*Interface, error) {
+	routes, err := netlink.RouteGet(address)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, r := range routes {
+		if r.Gw != nil {
+			continue
+		}
+
+		var m *macvlan.Macvlan
+		m, err = macvlan.FromLinkIndex(r.LinkIndex)
+		if err != nil {
+			continue
+		}
+
+		var v *vxlan.Vxlan
+		v, err = vxlan.FromLinkIndex(m.GetParentIndex())
+		if err != nil {
+			continue
+		}
+
+		return getInterfaceFromDevices(v, m), nil
+	}
+
+	return nil, fmt.Errorf("interface not found")
+}
+
+func getInterfaceFromDevices(vxl *vxlan.Vxlan, mvl *macvlan.Macvlan) *Interface {
+	return &Interface{
+		name: vxl.Name(),
+		vxl:  vxl,
+		mvl:  mvl,
+		log:  log.WithField("Interface", vxl.Name()),
+		l:    getHl(vxl.Name()),
+	}
+}

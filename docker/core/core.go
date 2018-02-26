@@ -315,24 +315,23 @@ func (c *Core) CheckAndDeleteInterface(hi *host.Interface, netName, address stri
 }
 
 // DeleteRoute deletes a route... who'd have thought?
-func (c *Core) DeleteRoute(address, poolid string) error {
-	pool := poolFromID(poolid)
-	nr, err := c.GetNetworkResourceByPool(pool)
+func (c *Core) DeleteRoute(address string) error {
+	addr := net.ParseIP(address)
+	hi, err := host.GetInterfaceFromDestinationAddress(addr)
 	if err != nil {
 		return err
 	}
 
-	hi, err := host.GetInterface(nr.Name)
+	err = hi.DelRoute(addr)
 	if err != nil {
 		return err
 	}
 
-	err = hi.DelRoute(net.ParseIP(address))
-	if err != nil {
-		return err
-	}
-
-	go c.CheckAndDeleteInterface(hi, nr.Name, address)
+	go func() {
+		if err = hi.Delete(); err != nil {
+			log.WithError(err).Error("error while deleting host interface")
+		}
+	}()
 
 	return nil
 }

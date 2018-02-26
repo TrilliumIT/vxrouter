@@ -24,7 +24,7 @@ type Vxlan struct {
 	log  *log.Entry
 }
 
-func new(name string) *Vxlan {
+func fromName(name string) *Vxlan {
 	log := log.WithField("Vxlan", name)
 	log.WithField("Func", "new()").Debug()
 	return &Vxlan{name, log}
@@ -202,7 +202,7 @@ func New(vxlanName string, opts map[string]string) (*Vxlan, error) {
 }
 
 func newVxlan(vxlanName string, opts map[string]string, retry bool) (*Vxlan, error) {
-	v := new(vxlanName)
+	v := fromName(vxlanName)
 	log := v.log.WithField("Func", "NewVxlan()")
 	log.Debug()
 
@@ -286,7 +286,7 @@ func newVxlan(vxlanName string, opts map[string]string, retry bool) (*Vxlan, err
 
 // FromName gets a vxlan interface by name
 func FromName(name string) (*Vxlan, error) {
-	v := new(name)
+	v := fromName(name)
 	log := v.log.WithField("Func", "FromName()")
 	log.Debug()
 
@@ -297,6 +297,30 @@ func FromName(name string) (*Vxlan, error) {
 	}
 
 	return v, nil
+}
+
+// FromLinkIndex returns a Vxlan from an interface name
+func FromLinkIndex(li int) (*Vxlan, error) { // nolint: dupl
+	l, err := netlink.LinkByIndex(li)
+	if err != nil {
+		return nil, err
+	}
+
+	return FromLink(l)
+}
+
+// FromLink returns a Macvlan from an interface link
+func FromLink(link netlink.Link) (*Vxlan, error) { // nolint: dupl
+	m := fromName(link.Attrs().Name)
+	log := m.log.WithField("Func", "FromLink()")
+	log.Debug()
+
+	_, err := checkNl(link)
+	if err != nil {
+		log.WithError(err).Debug()
+		return nil, err
+	}
+	return m, nil
 }
 
 // CreateMacvlan creates a macvlan as a slave to v
@@ -401,4 +425,9 @@ func (v *Vxlan) GetSlaveDevices() ([]netlink.Link, error) {
 		r = append(r, link)
 	}
 	return r, nil
+}
+
+// Name returns the name
+func (v *Vxlan) Name() string {
+	return v.name
 }

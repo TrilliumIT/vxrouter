@@ -94,5 +94,5 @@ func (d *Driver) RequestAddress(r *gphipam.RequestAddressRequest) (*gphipam.Requ
 func (d *Driver) ReleaseAddress(r *gphipam.ReleaseAddressRequest) error {
 	d.log.WithField("r", r).Debug("ReleaseAddress()")
 
-	return d.core.DeleteRoute(r.Address, r.PoolID)
+	return d.core.DeleteRoute(r.Address)
 }
