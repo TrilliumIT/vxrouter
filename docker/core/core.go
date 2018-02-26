@@ -93,13 +93,6 @@ func (c *Core) getNrFromCache(s string) *types.NetworkResource {
 	return <-rc
 }
 
-// GetContainers gets a list of docker containers
-func (c *Core) GetContainers() ([]types.Container, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), dockerTimeout)
-	defer cancel()
-	return c.dc.ContainerList(ctx, types.ContainerListOptions{})
-}
-
 // GetNetworkResourceByID gets a network resource by ID (checks cache first)
 func (c *Core) GetNetworkResourceByID(id string) (*types.NetworkResource, error) {
 	log := log.WithField("net_id", id)
@@ -213,19 +206,6 @@ func (c *Core) GetGatewayByNetID(netid string) (*net.IPNet, error) {
 	return GatewayFromNR(nr)
 }
 
-// GetGatewayByPoolID return the gateway by the poolid (I don't think I'm calling this anymore)
-func (c *Core) GetGatewayByPoolID(poolid string) (*net.IPNet, error) {
-	log := log.WithField("poolid", poolid)
-	log.Debug("GetGatewayByNetID()")
-
-	pool := poolFromID(poolid)
-	nr, err := c.GetNetworkResourceByPool(pool)
-	if err != nil {
-		return nil, err
-	}
-	return GatewayFromNR(nr)
-}
-
 // CreateContainerInterface creates the macvlan to be put into a container namespace
 // returns the name of the interface
 func (c *Core) CreateContainerInterface(netid, endpointid string) (string, error) {
@@ -286,32 +266,6 @@ func (c *Core) DeleteContainerInterface(netid, endpointid string) error {
 	}
 
 	return nil
-}
-
-// CheckAndDeleteInterface checks the host interface for running containers, and if non, deletes it
-func (c *Core) CheckAndDeleteInterface(hi *host.Interface, netName, address string) {
-
-	containers, err := c.GetContainers()
-	if err != nil {
-		log.WithError(err).Error("failed to list containers")
-		return
-	}
-
-	for _, c := range containers {
-		ns, ok := c.NetworkSettings.Networks[netName]
-		if !ok {
-			continue
-		}
-
-		if ns.IPAddress != address {
-			log.Debug("other containers are still running on this network")
-			return
-		}
-	}
-
-	if err = hi.Delete(); err != nil {
-		log.WithError(err).Error("failed to delete host interface")
-	}
 }
 
 // DeleteRoute deletes a route... who'd have thought?
