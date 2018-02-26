@@ -32,11 +32,6 @@ type Core struct {
 	putNr    chan *types.NetworkResource
 }
 
-type getNr struct {
-	s  string
-	rc chan<- *types.NetworkResource
-}
-
 // New creates a new client
 func New(propTime, respTime time.Duration) (*Core, error) {
 	dc, err := client.NewEnvClient()
@@ -55,42 +50,6 @@ func New(propTime, respTime time.Duration) (*Core, error) {
 
 	go nrCacheLoop(c.getNr, c.delNr, c.putNr)
 	return c, nil
-}
-
-func nrCacheLoop(getNr <-chan *getNr, delNr <-chan string, putNr <-chan *types.NetworkResource) {
-	nrCache := make(map[string]*types.NetworkResource)
-	for {
-		select {
-		case rc := <-getNr:
-			rc.rc <- nrCache[rc.s]
-		case dn := <-delNr:
-			nr := nrCache[dn]
-			if nr == nil {
-				break
-			}
-			delete(nrCache, nr.ID)
-			pool, err := poolFromNR(nr)
-			if err != nil {
-				log.Debug("failed to get pool from network resource, not deleting")
-				break
-			}
-			delete(nrCache, pool)
-		case nr := <-putNr:
-			nrCache[nr.ID] = nr
-			pool, err := poolFromNR(nr)
-			if err != nil {
-				log.Debug("failed to get pool from network resource, not caching")
-				break
-			}
-			nrCache[pool] = nr
-		}
-	}
-}
-
-func (c *Core) getNrFromCache(s string) *types.NetworkResource {
-	rc := make(chan *types.NetworkResource)
-	c.getNr <- &getNr{s, rc}
-	return <-rc
 }
 
 // getNetworkResourceByID gets a network resource by ID (checks cache first)
@@ -113,7 +72,7 @@ func (c *Core) getNetworkResourceByID(id string) (*types.NetworkResource, error)
 	}
 	nr = &nnr
 
-	c.putNr <- nr
+	c.putNrInCache(nr)
 
 	return nr, nil
 }
@@ -155,7 +114,7 @@ func (c *Core) getNetworkResourceByPool(pool string) (*types.NetworkResource, er
 // Uncache uncaches the network resources
 func (c *Core) Uncache(poolid string) {
 	pool := poolFromID(poolid)
-	c.delNr <- pool
+	c.delNrInCache(pool)
 }
 
 // ConnectAndGetAddress connects the host to the network for the
