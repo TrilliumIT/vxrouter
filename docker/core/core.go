@@ -37,8 +37,8 @@ type getNr struct {
 	rc chan<- *types.NetworkResource
 }
 
-// NewCore creates a new client
-func NewCore(propTime, respTime time.Duration) (*Core, error) {
+// New creates a new client
+func New(propTime, respTime time.Duration) (*Core, error) {
 	dc, err := client.NewEnvClient()
 	if err != nil {
 		return nil, err
@@ -93,8 +93,8 @@ func (c *Core) getNrFromCache(s string) *types.NetworkResource {
 	return <-rc
 }
 
-// GetNetworkResourceByID gets a network resource by ID (checks cache first)
-func (c *Core) GetNetworkResourceByID(id string) (*types.NetworkResource, error) {
+// getNetworkResourceByID gets a network resource by ID (checks cache first)
+func (c *Core) getNetworkResourceByID(id string) (*types.NetworkResource, error) {
 	log := log.WithField("net_id", id)
 	log.Debug("GetNetworkResourceByID()")
 
@@ -118,8 +118,8 @@ func (c *Core) GetNetworkResourceByID(id string) (*types.NetworkResource, error)
 	return nr, nil
 }
 
-// GetNetworkResourceByPool gets a network resource by it's subnet
-func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, error) {
+// getNetworkResourceByPool gets a network resource by it's subnet
+func (c *Core) getNetworkResourceByPool(pool string) (*types.NetworkResource, error) {
 	log := log.WithField("pool", pool)
 	log.Debug("getNetworkResourceByPool")
 
@@ -139,7 +139,7 @@ func (c *Core) GetNetworkResourceByPool(pool string) (*types.NetworkResource, er
 	}
 
 	for _, n := range nl {
-		nr, err = c.GetNetworkResourceByID(n.ID)
+		nr, err = c.getNetworkResourceByID(n.ID)
 		if err != nil {
 			continue
 		}
@@ -167,7 +167,7 @@ func (c *Core) ConnectAndGetAddress(addr, poolid string) (*net.IPNet, error) {
 	log.Debug("ConnectAndGetAddress()")
 
 	pool := poolFromID(poolid)
-	nr, err := c.GetNetworkResourceByPool(pool)
+	nr, err := c.getNetworkResourceByPool(pool)
 	if err != nil {
 		log.WithError(err).Error("failed to get network resource")
 		return nil, err
@@ -198,7 +198,7 @@ func (c *Core) GetGatewayByNetID(netid string) (*net.IPNet, error) {
 	log := log.WithField("netid", netid)
 	log.Debug("GetGatewayByNetID()")
 
-	nr, err := c.GetNetworkResourceByID(netid)
+	nr, err := c.getNetworkResourceByID(netid)
 	if err != nil {
 		log.WithError(err).WithField("NetworkID", netid).Error("failed to get network resource")
 		return nil, err
@@ -213,7 +213,7 @@ func (c *Core) CreateContainerInterface(netid, endpointid string) (string, error
 	log = log.WithField("endpointid", endpointid)
 	log.Debug("CreateContainerInterface()")
 
-	nr, err := c.GetNetworkResourceByID(netid)
+	nr, err := c.getNetworkResourceByID(netid)
 	if err != nil {
 		log.WithError(err).WithField("netid", netid).Error("failed to get network resource")
 		return "", err
@@ -247,7 +247,7 @@ func (c *Core) DeleteContainerInterface(netid, endpointid string) error {
 	log = log.WithField("endpointid", endpointid)
 	log.Debug("CreateContainerInterface()")
 
-	nr, err := c.GetNetworkResourceByID(netid)
+	nr, err := c.getNetworkResourceByID(netid)
 	if err != nil {
 		log.WithError(err).WithField("NetworkID", netid).Error("failed to get network resource")
 		return err

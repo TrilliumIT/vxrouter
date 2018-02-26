@@ -80,7 +80,7 @@ func Run(ctx *cli.Context) {
 	pt := ctx.Duration("prop-timeout")
 	rt := ctx.Duration("resp-timeout")
 
-	core, err := core.NewCore(pt, rt)
+	core, err := core.New(pt, rt)
 	if err != nil {
 		log.WithError(err).Fatal("failed to create docker core")
 	}
