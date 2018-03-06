@@ -84,9 +84,13 @@ func (c *Core) getContainerIPsAndSubnets() (map[string]string, error) {
 	ret := make(map[string]string)
 	for _, ctr := range ctrs {
 		for _, es := range ctr.NetworkSettings.Networks {
-			if es.IPAMConfig.IPv4Address != "" {
-				ret[es.IPAMConfig.IPv4Address] = es.NetworkID
+			if es.IPAMConfig == nil {
+				continue
 			}
+			if es.IPAMConfig.IPv4Address == "" {
+				continue
+			}
+			ret[es.IPAMConfig.IPv4Address] = es.NetworkID
 		}
 	}
 	return ret, nil
