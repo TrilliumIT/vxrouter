@@ -6,7 +6,7 @@ import (
 
 // useful constants for the whole project
 const (
-	Version                 = "0.0.7"
+	Version                 = "0.0.8"
 	EnvPrefix               = "VXR_"
 	NetworkDriver           = "vxrNet"
 	IpamDriver              = "vxrIpam"

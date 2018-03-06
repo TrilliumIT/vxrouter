@@ -56,6 +56,12 @@ func main() {
 			Usage:  "Maximum allowed response milliseconds, to prevent hanging docker daemon",
 			EnvVar: envPrefix + "RESP_TIMEOUT",
 		},
+		cli.DurationFlag{
+			Name:   "reconcile-interval, ri",
+			Value:  30 * time.Second,
+			Usage:  "Interval for running periodic reconcile of routes and containers. 0 to disable",
+			EnvVar: envPrefix + "RECONCILE_INTERVAL",
+		},
 	}
 	app.Action = Run
 	err := app.Run(os.Args)
@@ -84,6 +90,17 @@ func Run(ctx *cli.Context) {
 	if err != nil {
 		log.WithError(err).Fatal("failed to create docker core")
 	}
+
+	go func(ri time.Duration) {
+		if ri <= 0 {
+			return
+		}
+		t := time.NewTicker(ri)
+		for {
+			<-t.C
+			core.Reconcile()
+		}
+	}(ctx.Duration("reconcile-interval"))
 
 	nd, err := network.NewDriver(ns, core)
 	if err != nil {

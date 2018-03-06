@@ -117,6 +117,23 @@ func (c *Core) Uncache(poolid string) {
 	c.delNrInCache(pool)
 }
 
+func (c *Core) connectIfNotConnected(addr, nrID string) error {
+	ip := net.ParseIP(addr)
+	numRoutes, err := host.VxroutesTo(ip)
+	if err != nil {
+		return err
+	}
+	if numRoutes > 0 {
+		return nil
+	}
+	nr, err := c.getNetworkResourceByID(nrID)
+	if err != nil {
+		return err
+	}
+	_, err = c.connectAndGetAddress(ip, nr)
+	return err
+}
+
 // ConnectAndGetAddress connects the host to the network for the
 // passed in pool, and returns either an available random or the
 // requested address if it's available
@@ -132,6 +149,12 @@ func (c *Core) ConnectAndGetAddress(addr, poolid string) (*net.IPNet, error) {
 		return nil, err
 	}
 
+	ip := net.ParseIP(addr)
+
+	return c.connectAndGetAddress(ip, nr)
+}
+
+func (c *Core) connectAndGetAddress(addr net.IP, nr *types.NetworkResource) (*net.IPNet, error) {
 	gw, err := GatewayFromNR(nr)
 	if err != nil {
 		log.WithError(err).Error("failed to get gateway")
@@ -148,8 +171,7 @@ func (c *Core) ConnectAndGetAddress(addr, poolid string) (*net.IPNet, error) {
 		return nil, err
 	}
 
-	rip := net.ParseIP(addr)
-	return hi.SelectAddress(rip, c.propTime, c.respTime, xf, xl)
+	return hi.SelectAddress(addr, c.propTime, c.respTime, xf, xl)
 }
 
 // GetGatewayByNetID loops over the IPAMConfig array, combine gw and sn into a cidr
