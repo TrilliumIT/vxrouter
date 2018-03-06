@@ -8,22 +8,24 @@ import (
 )
 
 func getIPNets(address net.IP, subnet *net.IPNet) (*net.IPNet, *net.IPNet) {
-	var sna, a *net.IPNet
+	sna := &net.IPNet{
+		IP:   address,
+		Mask: address.DefaultMask(),
+	}
 
 	//address in big subnet
 	if subnet != nil {
-		sna = &net.IPNet{
-			IP:   address,
-			Mask: subnet.Mask,
-		}
+		sna.Mask = subnet.Mask
 	}
 
-	//address as host route (like /32 or /128)
-	a = &net.IPNet{IP: address}
-	if a.IP.To4() != nil {
-		a.Mask = net.CIDRMask(32, 32)
-	} else {
-		a.Mask = net.CIDRMask(128, 128)
+	if sna.Mask == nil {
+		sna.Mask = net.CIDRMask(128, 128)
+	}
+
+	_, ml := sna.Mask.Size()
+	a := &net.IPNet{
+		IP:   address,
+		Mask: net.CIDRMask(ml, ml),
 	}
 
 	return sna, a

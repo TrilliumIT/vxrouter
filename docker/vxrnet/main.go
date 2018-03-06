@@ -92,6 +92,7 @@ func Run(ctx *cli.Context) {
 	}
 
 	go func(ri time.Duration) {
+		core.Reconcile()
 		if ri <= 0 {
 			return
 		}

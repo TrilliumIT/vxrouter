@@ -117,21 +117,21 @@ func (c *Core) Uncache(poolid string) {
 	c.delNrInCache(pool)
 }
 
-func (c *Core) connectIfNotConnected(addr, nrID string) error {
+func (c *Core) connectIfNotConnected(addr, nrID string) (bool, error) {
 	ip := net.ParseIP(addr)
 	numRoutes, err := host.VxroutesTo(ip)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if numRoutes > 0 {
-		return nil
+		return false, nil
 	}
 	nr, err := c.getNetworkResourceByID(nrID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	_, err = c.connectAndGetAddress(ip, nr)
-	return err
+	return true, err
 }
 
 // ConnectAndGetAddress connects the host to the network for the

@@ -4,6 +4,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 
 	"context"
+	"net"
 
 	"github.com/TrilliumIT/vxrouter/host"
 	"github.com/docker/docker/api/types"
@@ -11,7 +12,7 @@ import (
 
 // Reconcile adds missing routes and deletes orphaned routes
 func (c *Core) Reconcile() {
-	log := log.WithField("func", "DelOrphanedRoutes()")
+	log := log.WithField("func", "Reconcile()")
 
 	// This is possibly racy, if a container starts up after containers are listed
 	// I might delete it's routes
@@ -23,9 +24,13 @@ func (c *Core) Reconcile() {
 
 	// Make sure all containers are connected
 	for ip, subnet := range es {
-		err = c.connectIfNotConnected(ip, subnet)
+		var connected bool
+		connected, err = c.connectIfNotConnected(ip, subnet)
 		if err != nil {
 			log.WithError(err).Error("Error connecting container")
+		}
+		if connected {
+			log.WithField("ip", ip).Debug("added missing route")
 		}
 	}
 
@@ -37,9 +42,10 @@ func (c *Core) Reconcile() {
 	}
 
 	for _, n := range nets {
-		if _, ok := es[n.String()]; ok {
+		if _, ok := es[n.IP.String()]; ok {
 			continue
 		}
+		log.WithField("IP", n.IP.String()).Debug("Deleting orphaned Route")
 		err = c.deleteRoute(n.IP)
 		if err != nil {
 			log.WithError(err).Error("error deleting orphaned route")
@@ -87,10 +93,21 @@ func (c *Core) getContainerIPsAndSubnets() (map[string]string, error) {
 			if es.IPAMConfig == nil {
 				continue
 			}
-			if es.IPAMConfig.IPv4Address == "" {
-				continue
+			// This is necessary because docker is stupid, this could be
+			// "10.1.141.01" for example
+			ip := net.ParseIP(es.IPAMConfig.IPv4Address)
+			if ip != nil {
+				ret[ip.String()] = es.NetworkID
+				log.WithField("Container", ctr.Names[0]).WithField("net", es.NetworkID).
+					WithField("ip", ip.String()).Debug("Appending to es list")
 			}
-			ret[es.IPAMConfig.IPv4Address] = es.NetworkID
+
+			ip = net.ParseIP(es.IPAddress)
+			if ip != nil {
+				ret[ip.String()] = es.NetworkID
+				log.WithField("Container", ctr.Names[0]).WithField("net", es.NetworkID).
+					WithField("ip", ip.String()).Debug("Appending to es list")
+			}
 		}
 	}
 	return ret, nil

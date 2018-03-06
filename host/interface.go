@@ -286,7 +286,7 @@ func (hi *Interface) selectAddress(reqAddress net.IP, propTime time.Duration, xf
 		return nil, nil
 	}
 
-	log = log.WithField("ip", addrOnly.IP.String())
+	log = log.WithField("ip", addrOnly.String())
 
 	// add host route to routing table
 	log.Debug("adding route to")
