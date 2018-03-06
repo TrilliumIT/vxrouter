@@ -12,12 +12,14 @@ func getIPNets(address net.IP, subnet *net.IPNet) (*net.IPNet, *net.IPNet) {
 
 	//address in big subnet
 	if subnet != nil {
-		sna.IP = address
-		sna.Mask = subnet.Mask
+		sna = &net.IPNet{
+			IP:   address,
+			Mask: subnet.Mask,
+		}
 	}
 
 	//address as host route (like /32 or /128)
-	a.IP = address
+	a = &net.IPNet{IP: address}
 	if a.IP.To4() != nil {
 		a.Mask = net.CIDRMask(32, 32)
 	} else {
