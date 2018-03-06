@@ -90,19 +90,19 @@ func (c *Core) getContainerIPsAndSubnets() (map[string]string, error) {
 	ret := make(map[string]string)
 	for _, ctr := range ctrs {
 		for _, es := range ctr.NetworkSettings.Networks {
-			if es.IPAMConfig == nil {
-				continue
-			}
 			// This is necessary because docker is stupid, this could be
 			// "10.1.141.01" for example
-			ip := net.ParseIP(es.IPAMConfig.IPv4Address)
+			ip := net.ParseIP(es.IPAddress)
 			if ip != nil {
 				ret[ip.String()] = es.NetworkID
 				log.WithField("Container", ctr.Names[0]).WithField("net", es.NetworkID).
 					WithField("ip", ip.String()).Debug("Appending to es list")
 			}
 
-			ip = net.ParseIP(es.IPAddress)
+			if es.IPAMConfig == nil {
+				continue
+			}
+			ip = net.ParseIP(es.IPAMConfig.IPv4Address)
 			if ip != nil {
 				ret[ip.String()] = es.NetworkID
 				log.WithField("Container", ctr.Names[0]).WithField("net", es.NetworkID).

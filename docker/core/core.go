@@ -155,6 +155,10 @@ func (c *Core) ConnectAndGetAddress(addr, poolid string) (*net.IPNet, error) {
 }
 
 func (c *Core) connectAndGetAddress(addr net.IP, nr *types.NetworkResource) (*net.IPNet, error) {
+	if nr.IPAM.Driver != vxrouter.IpamDriver || nr.Driver != vxrouter.NetworkDriver {
+		log.WithField("ipam-driver", nr.IPAM.Driver).WithField("network-driver", nr.Driver).Debug("not a vxrnet, refusing to connectAndGetAddress")
+		return nil, nil
+	}
 	gw, err := GatewayFromNR(nr)
 	if err != nil {
 		log.WithError(err).Error("failed to get gateway")
