@@ -40,7 +40,7 @@ func (c *Core) Reconcile() {
 		if _, ok := es[n.String()]; ok {
 			continue
 		}
-		err = c.DeleteRoute(n.String())
+		err = c.deleteRoute(n.IP)
 		if err != nil {
 			log.WithError(err).Error("error deleting orphaned route")
 		}

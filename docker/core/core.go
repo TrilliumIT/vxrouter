@@ -251,7 +251,10 @@ func (c *Core) DeleteContainerInterface(netid, endpointid string) error {
 
 // DeleteRoute deletes a route... who'd have thought?
 func (c *Core) DeleteRoute(address string) error {
-	addr := net.ParseIP(address)
+	return c.deleteRoute(net.ParseIP(address))
+}
+
+func (c *Core) deleteRoute(addr net.IP) error {
 	hi, err := host.GetInterfaceFromDestinationAddress(addr)
 	if err != nil {
 		return err
