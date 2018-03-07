@@ -28,6 +28,11 @@ type Interface struct {
 	l    *hiLock
 }
 
+// Name returns the name of the host interface
+func (hi *Interface) Name() string {
+	return hi.name
+}
+
 // GetOrCreateInterface creates required host interfaces if they don't exist, or gets them if they already do
 func GetOrCreateInterface(name string, gateway *net.IPNet, opts map[string]string) (*Interface, error) {
 	hi, _ := getInterface(name)
