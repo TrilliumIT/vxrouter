@@ -58,6 +58,7 @@ func (c *Core) Reconcile() {
 		hi, err = c.deleteRoute(n.IP)
 		if err != nil {
 			log.WithError(err).Error("error deleting orphaned route")
+			continue
 		}
 		orphanedInts[hi.Name()] = hi
 	}
