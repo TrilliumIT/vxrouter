@@ -121,8 +121,6 @@ func (c *Core) getContainerIPsAndSubnets() (map[string]string, error) {
 			ip := net.ParseIP(es.IPAddress)
 			if ip != nil {
 				ret[ip.String()] = es.NetworkID
-				log.WithField("Container", ctr.Names[0]).WithField("net", es.NetworkID).
-					WithField("ip", ip.String()).Debug("Appending to es list")
 			}
 
 			if es.IPAMConfig == nil {
@@ -131,8 +129,6 @@ func (c *Core) getContainerIPsAndSubnets() (map[string]string, error) {
 			ip = net.ParseIP(es.IPAMConfig.IPv4Address)
 			if ip != nil {
 				ret[ip.String()] = es.NetworkID
-				log.WithField("Container", ctr.Names[0]).WithField("net", es.NetworkID).
-					WithField("ip", ip.String()).Debug("Appending to es list")
 			}
 		}
 	}
