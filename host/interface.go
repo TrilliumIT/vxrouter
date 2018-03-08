@@ -315,6 +315,14 @@ func (hi *Interface) selectAddress(reqAddress net.IP, propTime time.Duration, xf
 		return nil, err
 	}
 
+	if numRoutes < 1 {
+		// The route either wasn't successfully added, or was removed,
+		// possibly because of a race with reconcile()
+		// let the outer loop try again
+		log.Debug("route doesn't exist after it was added")
+		return nil, nil
+	}
+
 	if numRoutes == 1 {
 		return addrInSubnet, nil
 	}
