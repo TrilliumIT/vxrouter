@@ -9,9 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/coreos/go-systemd/activation"
 	gphipam "github.com/docker/go-plugins-helpers/ipam"
 	gphnet "github.com/docker/go-plugins-helpers/network"
+	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
 	"github.com/TrilliumIT/vxrouter"
@@ -116,10 +117,25 @@ func Run(ctx *cli.Context) {
 	icerr := make(chan error)
 
 	nh := gphnet.NewHandler(nd)
-	go func() { ncerr <- nh.ServeUnix(network.DriverName, 0) }()
 
 	ih := gphipam.NewHandler(id)
-	go func() { icerr <- ih.ServeUnix(ipam.DriverName, 0) }()
+
+	listeners, _ := activation.Listeners() // wtf coreos, this funciton never returns errors
+	if len(listeners) == 0 {
+		log.Debug("launching network handler with default listener")
+		go func() { ncerr <- nh.ServeUnix(network.DriverName, 0) }()
+		log.Debug("launching ipam handler with default listener")
+		go func() { icerr <- ih.ServeUnix(ipam.DriverName, 0) }()
+	} else if len(listeners) == 2 {
+		nl := listeners[0]
+		log.WithField("listener", nl.Addr().String()).Debug("launching network handler")
+		go func() { ncerr <- nh.Serve(nl) }()
+		il := listeners[1]
+		log.WithField("listener", il.Addr().String()).Debug("launching ipam handler")
+		go func() { icerr <- ih.Serve(il) }()
+	} else {
+		log.Fatal("exactly two sockets are required for socket activation")
+	}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
