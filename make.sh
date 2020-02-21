@@ -5,16 +5,6 @@ check_prerequisites() {
 	[[ "$GOPATH" == "" ]] && \
 		errors=(${errors[@]} "GOPATH env missing")
 	
-	[[ -x "$GOPATH/bin/dep" ]] || \
-		errors=("${errors[@]}" "dep not found in \"$GOPATH/bin/\"")
-
-	if [[ "${#errors[@]}" > 0 ]]; then
-		echo "Errors:"
-		for error in "${errors[@]}"; do
-			echo "  $error"
-		done
-		return 1
-	fi
 	return 0
 }
 
@@ -46,13 +36,6 @@ MAIN_VER=$(grep "\t*Version *= " const.go | sed 's/\t*Version *= //g' | sed 's/"
 
 check_prerequisites || exit 1
 check_versions || exit 1
-
-echo "Installing Dependencies..."
-$GOPATH/bin/dep ensure
-
-echo "Linting..."
-gometalinter --vendor ./...
-
 
 echo "Building..."
 mkdir bin 2>/dev/null || true
