@@ -1,0 +1,11 @@
+[Unit]
+Description=vxrnet
+Before=docker.service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/vxrnet
+
+[Install]
+WantedBy=docker.service

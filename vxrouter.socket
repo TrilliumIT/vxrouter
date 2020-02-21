@@ -1,0 +1,9 @@
+[Unit]
+Before=docker.service
+
+[Socket]
+ListenStream=/run/docker/plugins/vxrNet.sock
+ListenStream=/run/docker/plugins/vxrIpam.sock
+
+[Install]
+WantedBy = sockets.target
