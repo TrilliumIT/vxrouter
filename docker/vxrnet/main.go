@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	gphipam "github.com/docker/go-plugins-helpers/ipam"
 	gphnet "github.com/docker/go-plugins-helpers/network"
 	"github.com/urfave/cli"

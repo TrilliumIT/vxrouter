@@ -3,7 +3,7 @@ package network
 import (
 	"fmt"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	gphnet "github.com/docker/go-plugins-helpers/network"
 
 	"github.com/TrilliumIT/vxrouter"

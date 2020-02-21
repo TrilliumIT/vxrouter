@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 func getEnvOpt(val, opt string) string { //nolint: unparam

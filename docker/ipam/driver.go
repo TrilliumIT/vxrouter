@@ -3,7 +3,7 @@ package ipam
 import (
 	"fmt"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	gphipam "github.com/docker/go-plugins-helpers/ipam"
 
 	"github.com/TrilliumIT/vxrouter"
